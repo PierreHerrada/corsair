@@ -1,13 +1,15 @@
-version: "3.8"
-
 services:
   corsair:
     build: .
     ports:
       - "80:80"
       - "8000:8000"
+    environment:
+      DATABASE_URL: postgres://corsair:corsair@postgres:5432/corsair
+      ENVIRONMENT: development
     env_file:
-      - .env
+      - path: .env
+        required: false
     depends_on:
       postgres:
         condition: service_healthy
