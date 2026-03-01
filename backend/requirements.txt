@@ -1,0 +1,37 @@
+# Web framework
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+
+# Database
+tortoise-orm[asyncpg]==0.22.1
+aerich==0.8.1
+asyncpg==0.30.0
+
+# Slack
+slack-bolt[async]==1.21.3
+slack-sdk==3.34.0
+
+# Jira
+httpx==0.28.1
+
+# GitHub
+PyGithub==2.5.0
+
+# Settings
+pydantic-settings==2.7.1
+
+# Auth
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+
+# WebSocket
+websockets==14.1
+
+# Testing
+pytest==8.3.4
+pytest-asyncio==0.25.2
+pytest-cov==6.0.0
+httpx==0.28.1
+
+# Linting
+ruff==0.8.6
