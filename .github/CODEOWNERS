@@ -1,0 +1,7 @@
+# Core maintainers own everything by default
+*                                       @PierreHerrada
+
+# Integration-specific ownership (community contributors)
+backend/app/integrations/slack/         @PierreHerrada
+backend/app/integrations/jira/          @PierreHerrada
+backend/app/integrations/github/        @PierreHerrada

@@ -1,0 +1,28 @@
+name: Update Badges
+on:
+  push:
+    branches: [main]
+
+jobs:
+  badge:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r backend/requirements.txt
+      - run: cd backend && pytest tests/ --cov=app --cov-report=json
+      - name: Extract coverage
+        run: |
+          COVERAGE=$(python -c "import json; print(int(json.load(open('backend/coverage.json'))['totals']['percent_covered']))")
+          echo "COVERAGE=$COVERAGE" >> $GITHUB_ENV
+      - name: Update coverage badge
+        uses: schneegans/dynamic-badges-action@v1.7.0
+        with:
+          auth: ${{ secrets.GIST_TOKEN }}
+          gistID: ${{ secrets.GIST_ID }}
+          filename: coverage.json
+          label: coverage
+          message: ${{ env.COVERAGE }}%
+          color: ${{ env.COVERAGE >= 80 && 'green' || 'red' }}
