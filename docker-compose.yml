@@ -4,12 +4,11 @@ services:
     ports:
       - "80:80"
       - "8000:8000"
-    environment:
-      DATABASE_URL: postgres://corsair:corsair@postgres:5432/corsair
-      ENVIRONMENT: development
     env_file:
-      - path: .env
-        required: false
+      - .env
+    environment:
+      # Override DATABASE_URL to point to the compose postgres service
+      DATABASE_URL: postgres://corsair:corsair@postgres:5432/corsair
     depends_on:
       postgres:
         condition: service_healthy
