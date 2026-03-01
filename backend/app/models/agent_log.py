@@ -23,4 +23,4 @@ class AgentLog(Model):
         ordering = ["created_at"]
 
     def __str__(self) -> str:
-        return f"AgentLog({self.type})"
+        return f"AgentLog({self.type.value})"

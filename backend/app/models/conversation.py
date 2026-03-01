@@ -24,4 +24,4 @@ class Conversation(Model):
         ordering = ["created_at"]
 
     def __str__(self) -> str:
-        return f"Conversation({self.role})"
+        return f"Conversation({self.role.value})"

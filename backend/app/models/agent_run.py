@@ -34,4 +34,4 @@ class AgentRun(Model):
         ordering = ["-started_at"]
 
     def __str__(self) -> str:
-        return f"AgentRun({self.stage}, status={self.status})"
+        return f"AgentRun({self.stage.value}, status={self.status.value})"

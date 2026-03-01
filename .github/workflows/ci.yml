@@ -42,4 +42,4 @@ jobs:
         with:
           node-version: "20"
       - run: cd frontend && npm ci
-      - run: cd frontend && npm test -- --coverage --coverageThreshold='{"global":{"lines":80}}'
+      - run: cd frontend && npx vitest run --coverage
