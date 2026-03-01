@@ -135,7 +135,7 @@ The name stuck for a few reasons:
 
 - **Autonomous by nature** — corsairs operated independently across open water; this agent operates independently across your entire toolchain.
 - **Mediterranean roots** — the project was born in Barcelona, a city built by the sea, where corsair history is part of the harbour walls. The creator loves boats. It fits.
-- **Short, sharp, universal** — five letters, works in every language, no existing dev tool claiming it for this purpose.
+- **Short, sharp, universal** — seven letters, works in every language, no existing dev tool claiming it for this purpose.
 
 Some software needs a fleet. Corsair just needs a heading.
 
