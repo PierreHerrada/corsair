@@ -10,6 +10,7 @@ asyncpg==0.30.0
 # Slack
 slack-bolt[async]==1.21.3
 slack-sdk==3.34.0
+aiohttp==3.11.14
 
 # Jira
 httpx==0.28.1

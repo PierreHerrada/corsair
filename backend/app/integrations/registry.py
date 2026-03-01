@@ -1,9 +1,21 @@
+from __future__ import annotations
+
 import logging
-from typing import ClassVar
+from typing import ClassVar, Optional
 
 from app.integrations.base import BaseIntegration
+from app.integrations.github.client import GitHubIntegration
+from app.integrations.jira.client import JiraIntegration
+from app.integrations.slack.bot import SlackIntegration
 
 logger = logging.getLogger(__name__)
+
+# Default integrations to register on first initialize
+_DEFAULT_INTEGRATIONS: list[type[BaseIntegration]] = [
+    SlackIntegration,
+    JiraIntegration,
+    GitHubIntegration,
+]
 
 
 class IntegrationRegistry:
@@ -17,6 +29,10 @@ class IntegrationRegistry:
 
     @classmethod
     def initialize(cls) -> None:
+        # Register defaults if registry is empty
+        if not cls._integrations:
+            for integration_class in _DEFAULT_INTEGRATIONS:
+                cls.register(integration_class)
         cls._active = []
         for integration in cls._integrations:
             missing = integration.check_env_vars()
@@ -39,7 +55,7 @@ class IntegrationRegistry:
         return cls._active
 
     @classmethod
-    def get(cls, name: str) -> BaseIntegration | None:
+    def get(cls, name: str) -> Optional[BaseIntegration]:
         for integration in cls._active:
             if integration.name == name:
                 return integration
