@@ -69,7 +69,7 @@ Corsair is a single Docker image that bundles a FastAPI backend, a React fronten
 ### 1. Task Creation (Slack → DB → UI)
 
 ```
-User tags @corsair in Slack
+User tags @Corsair in Slack
     ↓
 Slack Bot receives app_mention event (Socket Mode)
     ↓

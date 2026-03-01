@@ -6,7 +6,7 @@ Corsair uses a plugin-based integration system. Each integration is a self-conta
 
 | Integration | Status | Required Env Vars | Description |
 |---|---|---|---|
-| **Slack** | Active | `SLACK_BOT_TOKEN`, `SLACK_APP_TOKEN` | Receives task requests via `@corsair` mentions, posts status updates to threads |
+| **Slack** | Active | `SLACK_BOT_TOKEN`, `SLACK_APP_TOKEN` | Receives task requests via `@Corsair` mentions, posts status updates to threads |
 | **Jira** | Active | `JIRA_BASE_URL`, `JIRA_EMAIL`, `JIRA_API_TOKEN`, `JIRA_PROJECT_KEY` | Creates and tracks Jira tickets for each task |
 | **GitHub** | Active | `GITHUB_TOKEN`, `GITHUB_ORG` | Opens pull requests after the review stage completes |
 

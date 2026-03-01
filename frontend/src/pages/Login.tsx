@@ -1,18 +1,29 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { useAuth } from "../context/AuthContext";
 
 export default function Login() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
+  const { login } = useAuth();
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (password) {
-      localStorage.setItem("corsair_auth", password);
-      navigate("/");
-    } else {
+    if (!password) {
       setError("Password is required");
+      return;
+    }
+    setLoading(true);
+    setError("");
+    try {
+      await login(password);
+      navigate("/");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Login failed");
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -35,12 +46,13 @@ export default function Login() {
           {error && <p className="text-coral text-sm mb-4">{error}</p>}
           <button
             type="submit"
-            className="w-full py-2 rounded font-medium text-white"
+            disabled={loading}
+            className="w-full py-2 rounded font-medium text-white disabled:opacity-50"
             style={{
               background: "linear-gradient(135deg, #1A6FB5, #0F4C8A)",
             }}
           >
-            Sign In
+            {loading ? "Signing in..." : "Sign In"}
           </button>
         </form>
       </div>

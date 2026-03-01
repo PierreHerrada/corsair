@@ -78,6 +78,17 @@ class JiraIntegration(BaseIntegration):
                 "url": f"{self._get_base_url()}/browse/{data['key']}",
             }
 
+    async def search_issues(self, jql: str, max_results: int = 100) -> list[dict]:
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(
+                f"{self._get_base_url()}/rest/api/3/search/jql",
+                headers=self._get_headers(),
+                params={"jql": jql, "maxResults": max_results},
+                timeout=30,
+            )
+            resp.raise_for_status()
+            return resp.json().get("issues", [])
+
     async def update_status(self, issue_key: str, transition_name: str) -> bool:
         async with httpx.AsyncClient() as client:
             resp = await client.get(

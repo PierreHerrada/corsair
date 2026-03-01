@@ -1,4 +1,5 @@
 import type { ChatMessagesResponse } from "../types";
+import { apiFetch } from "./client";
 
 const BASE = "/api/v1";
 
@@ -12,7 +13,7 @@ export async function fetchChatMessages(
     offset: String(offset),
   });
   if (channelId) params.set("channel_id", channelId);
-  const resp = await fetch(`${BASE}/chat/messages?${params}`);
+  const resp = await apiFetch(`${BASE}/chat/messages?${params}`);
   if (!resp.ok) throw new Error("Failed to fetch chat messages");
   return resp.json();
 }

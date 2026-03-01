@@ -119,7 +119,7 @@ Never load the full codebase. Never re-read files you already have in context.
 ## Brand & Design System
 
 ### Name
-**Corsair** — lowercase in UI, `corsair` as repo/CLI name, `@corsair` as Slack bot handle.
+**Corsair** — lowercase in UI, `corsair` as repo/CLI name, `@Corsair` as Slack bot handle.
 
 ### Logo
 The logo is a minimal SVG: one vertical mast and two triangular sails (one large pointing left, one smaller pointing right). No hull, no wake lines, no decorative elements. Pure geometry.

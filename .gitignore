@@ -55,3 +55,6 @@ migrations/*.pyc
 # Coverage
 coverage/
 *.lcov
+
+# Logs
+logs/

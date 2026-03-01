@@ -1,22 +1,28 @@
 import logging
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from tortoise.contrib.fastapi import register_tortoise
 
 from app.api.v1 import (
     chat_router,
     dashboard_router,
+    datadog_router,
     integrations_router,
     tasks_router,
     webhooks_router,
 )
 from app.api.v1.agent import router as agent_router
+from app.auth import auth_router, get_current_user
 from app.config import settings
 from app.db import TORTOISE_ORM
 from app.integrations.registry import IntegrationRegistry
 
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+)
 logger = logging.getLogger(__name__)
 
 
@@ -34,7 +40,7 @@ def create_app() -> FastAPI:
     register_tortoise(
         app,
         config=TORTOISE_ORM,
-        generate_schemas=settings.environment != "production",
+        generate_schemas=True,
         add_exception_handlers=True,
     )
 
@@ -58,13 +64,33 @@ def create_app() -> FastAPI:
             except Exception:
                 logger.exception("Failed to start Slack listener")
 
-    # Register routers
-    app.include_router(tasks_router)
-    app.include_router(dashboard_router)
+        # Start Jira ticket sync if configured
+        jira = IntegrationRegistry.get("jira")
+        if jira is not None:
+            try:
+                from app.integrations.jira.client import JiraIntegration
+                from app.integrations.jira.sync import start_sync
+
+                if isinstance(jira, JiraIntegration):
+                    start_sync(jira)
+                    logger.info("Jira ticket sync started")
+            except Exception:
+                logger.exception("Failed to start Jira sync")
+
+    # Public routers (no auth)
+    app.include_router(auth_router)
     app.include_router(webhooks_router)
-    app.include_router(integrations_router)
+
+    # Protected routers (require auth)
+    auth_dep = [Depends(get_current_user)]
+    app.include_router(tasks_router, dependencies=auth_dep)
+    app.include_router(dashboard_router, dependencies=auth_dep)
+    app.include_router(integrations_router, dependencies=auth_dep)
+    app.include_router(chat_router, dependencies=auth_dep)
+    app.include_router(datadog_router, dependencies=auth_dep)
+
+    # WebSocket router — auth handled inside the handler
     app.include_router(agent_router)
-    app.include_router(chat_router)
 
     @app.get("/health")
     async def health() -> dict:

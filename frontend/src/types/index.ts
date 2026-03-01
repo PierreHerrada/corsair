@@ -93,3 +93,28 @@ export interface ChatMessagesResponse {
   limit: number;
   messages: ChatMessage[];
 }
+
+export type AnalysisSource = "webhook" | "manual";
+export type AnalysisStatus = "pending" | "analyzing" | "done" | "failed";
+
+export interface DatadogAnalysis {
+  id: string;
+  source: AnalysisSource;
+  trigger: string;
+  status: AnalysisStatus;
+  query: string;
+  trace_id: string | null;
+  log_count: number;
+  raw_logs: Record<string, unknown>[];
+  raw_trace: Record<string, unknown>[];
+  summary: string;
+  error_message: string | null;
+  created_at: string;
+}
+
+export interface DatadogAnalysesResponse {
+  total: number;
+  offset: number;
+  limit: number;
+  analyses: DatadogAnalysis[];
+}

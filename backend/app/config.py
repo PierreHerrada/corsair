@@ -17,6 +17,13 @@ class Settings(BaseSettings):
     jira_email: str = ""
     jira_api_token: str = ""
     jira_project_key: str = "SWE"
+    jira_sync_interval_seconds: int = 300
+    jira_sync_label: str = "corsair"
+
+    # Datadog
+    dd_api_key: str = ""
+    dd_app_key: str = ""
+    dd_site: str = "datadoghq.com"
 
     # GitHub
     github_token: str = ""
@@ -24,6 +31,7 @@ class Settings(BaseSettings):
 
     # App
     admin_password: str = "changeme"
+    jwt_secret: str = "change-this-jwt-secret-in-production"
     environment: str = "development"
 
     model_config = {"env_file": ".env", "extra": "ignore"}

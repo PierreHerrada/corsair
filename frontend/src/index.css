@@ -1,6 +1,22 @@
 @import "tailwindcss";
 
 @theme {
+  --color-deep: #F8FAFC;
+  --color-abyss: #F1F5F9;
+  --color-navy: #E2E8F0;
+  --color-ocean: #CBD5E1;
+  --color-horizon: #94A3B8;
+  --color-wave: #2563EB;
+  --color-sky: #0284C7;
+  --color-foam: #0369A1;
+  --color-mist: #475569;
+  --color-white: #0F172A;
+  --color-teal: #059669;
+  --color-gold: #D97706;
+  --color-coral: #DC2626;
+}
+
+.dark {
   --color-deep: #020B18;
   --color-abyss: #05152A;
   --color-navy: #0A2444;

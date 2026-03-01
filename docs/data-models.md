@@ -157,6 +157,31 @@ Persists Slack messages seen by the bot for display in the Chat tab.
 
 ---
 
+## datadog_analyses
+
+Stores Datadog log/trace analysis results, triggered manually or via webhook.
+
+| Field | Type | Constraints | Description |
+|---|---|---|---|
+| `id` | UUID | PK, auto-generated | Unique analysis identifier |
+| `source` | ENUM | NOT NULL | One of: `webhook`, `manual` |
+| `trigger` | TEXT | NOT NULL | URL pasted or monitor name |
+| `status` | ENUM | NOT NULL, default 'pending' | One of: `pending`, `analyzing`, `done`, `failed` |
+| `query` | TEXT | NOT NULL, default '' | Log search query used |
+| `trace_id` | TEXT | NULLABLE | Trace ID if trace-based |
+| `log_count` | INT | NOT NULL, default 0 | Number of log entries found |
+| `raw_logs` | JSONB | NOT NULL, default [] | Raw log entries (capped at 200) |
+| `raw_trace` | JSONB | NOT NULL, default [] | Raw span entries |
+| `summary` | TEXT | NOT NULL, default '' | Human-readable analysis |
+| `error_message` | TEXT | NULLABLE | Error if analysis failed |
+| `created_at` | TIMESTAMPTZ | NOT NULL, auto | Record creation time |
+
+### Indexes
+- Primary key on `id`
+- Index on `created_at` (for ordering)
+
+---
+
 ## Tortoise ORM Configuration
 
 ```python
@@ -172,6 +197,7 @@ TORTOISE_ORM = {
                 "app.models.agent_log",
                 "app.models.conversation",
                 "app.models.chat_message",
+                "app.models.datadog_analysis",
                 "aerich.models",
             ],
             "default_connection": "default",

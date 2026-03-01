@@ -54,7 +54,7 @@ This document describes the high-level system design of Corsair for new contribu
 ## Data Flow
 
 ### Task Creation (Slack → DB → UI)
-1. User tags `@corsair` in Slack
+1. User tags `@Corsair` in Slack
 2. Slack bot receives `app_mention` event via Socket Mode
 3. Bot analyzes the message with Claude, extracts task details
 4. Bot creates a Jira ticket via Jira integration

@@ -2,6 +2,40 @@
 
 All routes are prefixed `/api/v1/`. The frontend builds exclusively against this contract. Do not deviate from these shapes.
 
+## Authentication
+
+All endpoints except `/health`, `/api/v1/auth/login`, and `/api/v1/webhooks/*` require a valid JWT token in the `Authorization` header:
+
+```
+Authorization: Bearer <token>
+```
+
+WebSocket connections pass the token as a query parameter: `/ws/runs/{run_id}?token=<token>`
+
+### `POST /api/v1/auth/login`
+
+Authenticate with the admin password and receive a JWT token.
+
+**Request Body:**
+```json
+{"password": "string"}
+```
+
+**Response:** `200 OK`
+```json
+{
+  "access_token": "string",
+  "token_type": "bearer"
+}
+```
+
+**Error:** `401 Unauthorized`
+```json
+{"detail": "Invalid password"}
+```
+
+---
+
 ## REST Endpoints
 
 ### Tasks
@@ -261,6 +295,115 @@ Returns paginated chat messages from the Slack listener.
 
 ---
 
+### Datadog
+
+#### `GET /api/v1/datadog/analyses`
+
+Returns paginated list of Datadog analyses (newest first). Does not include `raw_logs` or `raw_trace` in list responses.
+
+**Query Parameters:**
+- `limit` (int, default 20, max 100) — Number of analyses to return
+- `offset` (int, default 0) — Pagination offset
+
+**Response:** `200 OK`
+```json
+{
+  "total": 5,
+  "offset": 0,
+  "limit": 20,
+  "analyses": [
+    {
+      "id": "uuid",
+      "source": "webhook|manual",
+      "trigger": "string",
+      "status": "pending|analyzing|done|failed",
+      "query": "string",
+      "trace_id": "string|null",
+      "log_count": 0,
+      "summary": "string",
+      "error_message": "string|null",
+      "created_at": "ISO 8601"
+    }
+  ]
+}
+```
+
+#### `GET /api/v1/datadog/analyses/{id}`
+
+Returns a single analysis with full raw data (logs and trace spans).
+
+**Response:** `200 OK`
+```json
+{
+  "id": "uuid",
+  "source": "webhook|manual",
+  "trigger": "string",
+  "status": "pending|analyzing|done|failed",
+  "query": "string",
+  "trace_id": "string|null",
+  "log_count": 0,
+  "raw_logs": [],
+  "raw_trace": [],
+  "summary": "string",
+  "error_message": "string|null",
+  "created_at": "ISO 8601"
+}
+```
+
+**Error:** `404 Not Found`
+```json
+{"detail": "Analysis not found"}
+```
+
+#### `POST /api/v1/datadog/analyze`
+
+Manually trigger a Datadog analysis. At least one of `url`, `query`, or `trace_id` is required.
+
+**Request Body:**
+```json
+{
+  "url": "string|null",
+  "query": "string|null",
+  "trace_id": "string|null"
+}
+```
+
+**Response:** `201 Created`
+```json
+{
+  "id": "uuid",
+  "source": "manual",
+  "trigger": "string",
+  "status": "pending",
+  "query": "",
+  "trace_id": null,
+  "log_count": 0,
+  "raw_logs": [],
+  "raw_trace": [],
+  "summary": "",
+  "error_message": null,
+  "created_at": "ISO 8601"
+}
+```
+
+**Error:** `422 Unprocessable Entity`
+```json
+{"detail": "At least one of url, query, or trace_id is required"}
+```
+
+#### `POST /api/v1/webhooks/datadog`
+
+Receives Datadog Monitor webhook payloads. Parses alert metadata and creates an analysis automatically.
+
+**Request Body:** Datadog Monitor webhook JSON (includes `title`, `tags`, `logs_sample`, etc.)
+
+**Response:** `200 OK`
+```json
+{"status": "ok"}
+```
+
+---
+
 ## WebSocket
 
 ### `WS /ws/runs/{run_id}`
@@ -381,5 +524,30 @@ interface ChatMessagesResponse {
   offset: number;
   limit: number;
   messages: ChatMessage[];
+}
+
+type AnalysisSource = "webhook" | "manual";
+type AnalysisStatus = "pending" | "analyzing" | "done" | "failed";
+
+interface DatadogAnalysis {
+  id: string;
+  source: AnalysisSource;
+  trigger: string;
+  status: AnalysisStatus;
+  query: string;
+  trace_id: string | null;
+  log_count: number;
+  raw_logs: Record<string, unknown>[];
+  raw_trace: Record<string, unknown>[];
+  summary: string;
+  error_message: string | null;
+  created_at: string;
+}
+
+interface DatadogAnalysesResponse {
+  total: number;
+  offset: number;
+  limit: number;
+  analyses: DatadogAnalysis[];
 }
 ```

@@ -4,6 +4,7 @@ import logging
 from typing import ClassVar, Optional
 
 from app.integrations.base import BaseIntegration
+from app.integrations.datadog.client import DatadogIntegration
 from app.integrations.github.client import GitHubIntegration
 from app.integrations.jira.client import JiraIntegration
 from app.integrations.slack.bot import SlackIntegration
@@ -15,6 +16,7 @@ _DEFAULT_INTEGRATIONS: list[type[BaseIntegration]] = [
     SlackIntegration,
     JiraIntegration,
     GitHubIntegration,
+    DatadogIntegration,
 ]
 
 

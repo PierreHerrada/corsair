@@ -68,6 +68,40 @@ class SlackIntegration(BaseIntegration):
         bolt_app = self.get_app()
         client = self.get_client()
 
+        @bolt_app.event("app_mention")
+        async def handle_mention(event: dict, say: object) -> None:
+            """Create a task when someone @mentions Corsair."""
+            from app.models.task import Task
+
+            user_id = event.get("user", "")
+            channel_id = event.get("channel", "")
+            text = event.get("text", "")
+            slack_ts = event.get("ts", "")
+
+            # Strip the bot mention from text to get the actual request
+            import re
+
+            clean_text = re.sub(r"<@[A-Z0-9]+>\s*", "", text).strip()
+            if not clean_text:
+                await say(text="Please include a task description after the mention.", thread_ts=slack_ts)
+                return
+
+            title = clean_text[:120]
+
+            task = await Task.create(
+                title=title,
+                description=clean_text,
+                slack_channel=channel_id,
+                slack_thread_ts=slack_ts,
+                slack_user_id=user_id,
+            )
+
+            await say(
+                text=f"Task created: *{task.title}* (status: {task.status.value})",
+                thread_ts=slack_ts,
+            )
+            logger.info("Task %s created from Slack mention by %s", task.id, user_id)
+
         @bolt_app.event("message")
         async def handle_message(event: dict, say: object) -> None:
             # Skip bot messages
@@ -108,3 +142,11 @@ class SlackIntegration(BaseIntegration):
         handler = AsyncSocketModeHandler(bolt_app, settings.slack_app_token)
         self._listening = True
         asyncio.create_task(handler.start_async())
+
+        try:
+            await client.chat_postMessage(
+                channel="U08HF50FEH0",
+                text="Hello! Corsair is online and ready.",
+            )
+        except Exception:
+            logger.exception("Failed to send startup DM")

@@ -3,6 +3,7 @@ import uuid
 import pytest
 from tortoise import Tortoise
 
+from app.auth import create_access_token
 from app.models import (
     AgentLog,
     AgentRun,
@@ -37,6 +38,12 @@ async def setup_db():
     yield
     await Tortoise._drop_databases()
     await Tortoise.close_connections()
+
+
+@pytest.fixture
+def auth_headers():
+    token = create_access_token()
+    return {"Authorization": f"Bearer {token}"}
 
 
 @pytest.fixture

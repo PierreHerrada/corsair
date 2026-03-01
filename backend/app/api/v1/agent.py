@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import json
 
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect
 
+from app.auth import verify_ws_token
 from app.models import AgentLog
 from app.websocket.manager import ws_manager
 
@@ -11,7 +12,12 @@ router = APIRouter(tags=["agent"])
 
 
 @router.websocket("/ws/runs/{run_id}")
-async def websocket_logs(websocket: WebSocket, run_id: str) -> None:
+async def websocket_logs(
+    websocket: WebSocket, run_id: str, token: str = Query("")
+) -> None:
+    if not verify_ws_token(token):
+        await websocket.close(code=4001)
+        return
     await ws_manager.connect(run_id, websocket)
     try:
         # Send existing logs for this run

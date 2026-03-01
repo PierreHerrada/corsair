@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { getToken } from "../api/client";
 import type { AgentLog } from "../types";
 
 export function useWebSocket(runId: string | null) {
@@ -10,7 +11,10 @@ export function useWebSocket(runId: string | null) {
     if (!runId) return;
 
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-    const ws = new WebSocket(`${protocol}//${window.location.host}/ws/runs/${runId}`);
+    const token = getToken() ?? "";
+    const ws = new WebSocket(
+      `${protocol}//${window.location.host}/ws/runs/${runId}?token=${encodeURIComponent(token)}`,
+    );
 
     ws.onopen = () => setConnected(true);
     ws.onclose = () => setConnected(false);

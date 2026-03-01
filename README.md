@@ -25,13 +25,13 @@
   <img src="https://img.shields.io/badge/coverage-%E2%89%A5%2080%25-success" alt="Coverage >= 80%">
 </p>
 
-**Corsair** is an open-source AI software engineering platform that bridges Slack, Jira, GitHub, and Claude Code into a unified workflow. Tag `@corsair` in Slack, and it autonomously plans, codes, and opens a PR — with human approval at every stage.
+**Corsair** is an open-source AI software engineering platform that bridges Slack, Jira, GitHub, and Claude Code into a unified workflow. Tag `@Corsair` in Slack, and it autonomously plans, codes, and opens a PR — with human approval at every stage.
 
 ![Screenshot placeholder](docs/screenshot-placeholder.png)
 
 ## Features
 
-- **Slack-first workflow** — Tag `@corsair` in any channel to create a task
+- **Slack-first workflow** — Tag `@Corsair` in any channel to create a task
 - **Jira integration** — Automatically creates and tracks Jira tickets
 - **Three-stage agent pipeline** — Plan → Work → Review, each manually triggered
 - **Live log streaming** — Watch Claude Code work in real-time via WebSocket

@@ -31,111 +31,123 @@ class TestHealthEndpoint:
 
 
 class TestTasksEndpoints:
-    async def test_list_tasks_empty(self, client):
-        resp = await client.get("/api/v1/tasks")
+    async def test_list_tasks_empty(self, client, auth_headers):
+        resp = await client.get("/api/v1/tasks", headers=auth_headers)
         assert resp.status_code == 200
         assert resp.json() == []
 
-    async def test_list_tasks(self, client, sample_task):
-        resp = await client.get("/api/v1/tasks")
+    async def test_list_tasks(self, client, auth_headers, sample_task):
+        resp = await client.get("/api/v1/tasks", headers=auth_headers)
         assert resp.status_code == 200
         data = resp.json()
         assert len(data) == 1
         assert data[0]["title"] == "Test task"
         assert data[0]["status"] == "backlog"
 
-    async def test_get_task(self, client, sample_task):
-        resp = await client.get(f"/api/v1/tasks/{sample_task.id}")
+    async def test_get_task(self, client, auth_headers, sample_task):
+        resp = await client.get(f"/api/v1/tasks/{sample_task.id}", headers=auth_headers)
         assert resp.status_code == 200
         data = resp.json()
         assert data["title"] == "Test task"
         assert data["latest_run"] is None
 
-    async def test_get_task_not_found(self, client):
+    async def test_get_task_not_found(self, client, auth_headers):
         fake_id = str(uuid.uuid4())
-        resp = await client.get(f"/api/v1/tasks/{fake_id}")
+        resp = await client.get(f"/api/v1/tasks/{fake_id}", headers=auth_headers)
         assert resp.status_code == 404
 
-    async def test_get_task_with_run(self, client, sample_task, sample_run):
-        resp = await client.get(f"/api/v1/tasks/{sample_task.id}")
+    async def test_get_task_with_run(self, client, auth_headers, sample_task, sample_run):
+        resp = await client.get(f"/api/v1/tasks/{sample_task.id}", headers=auth_headers)
         assert resp.status_code == 200
         data = resp.json()
         assert data["latest_run"] is not None
         assert data["latest_run"]["stage"] == "plan"
 
-    async def test_patch_task_status(self, client, sample_task):
+    async def test_patch_task_status(self, client, auth_headers, sample_task):
         resp = await client.patch(
             f"/api/v1/tasks/{sample_task.id}",
             json={"status": "planned"},
+            headers=auth_headers,
         )
         assert resp.status_code == 200
         assert resp.json()["status"] == "planned"
 
-    async def test_patch_task_not_found(self, client):
+    async def test_patch_task_not_found(self, client, auth_headers):
         fake_id = str(uuid.uuid4())
         resp = await client.patch(
             f"/api/v1/tasks/{fake_id}",
             json={"status": "planned"},
+            headers=auth_headers,
         )
         assert resp.status_code == 404
 
-    async def test_trigger_plan(self, client, sample_task):
+    async def test_trigger_plan(self, client, auth_headers, sample_task):
         with patch("app.api.v1.tasks._run_agent_background", new_callable=AsyncMock):
-            resp = await client.post(f"/api/v1/tasks/{sample_task.id}/plan")
+            resp = await client.post(
+                f"/api/v1/tasks/{sample_task.id}/plan", headers=auth_headers
+            )
             assert resp.status_code == 201
             data = resp.json()
             assert data["stage"] == "plan"
             assert data["status"] == "running"
 
-    async def test_trigger_work(self, client, sample_task):
+    async def test_trigger_work(self, client, auth_headers, sample_task):
         with patch("app.api.v1.tasks._run_agent_background", new_callable=AsyncMock):
-            resp = await client.post(f"/api/v1/tasks/{sample_task.id}/work")
+            resp = await client.post(
+                f"/api/v1/tasks/{sample_task.id}/work", headers=auth_headers
+            )
             assert resp.status_code == 201
             assert resp.json()["stage"] == "work"
 
-    async def test_trigger_review(self, client, sample_task):
+    async def test_trigger_review(self, client, auth_headers, sample_task):
         with patch("app.api.v1.tasks._run_agent_background", new_callable=AsyncMock):
-            resp = await client.post(f"/api/v1/tasks/{sample_task.id}/review")
+            resp = await client.post(
+                f"/api/v1/tasks/{sample_task.id}/review", headers=auth_headers
+            )
             assert resp.status_code == 201
             assert resp.json()["stage"] == "review"
 
-    async def test_trigger_plan_not_found(self, client):
+    async def test_trigger_plan_not_found(self, client, auth_headers):
         fake_id = str(uuid.uuid4())
-        resp = await client.post(f"/api/v1/tasks/{fake_id}/plan")
+        resp = await client.post(
+            f"/api/v1/tasks/{fake_id}/plan", headers=auth_headers
+        )
         assert resp.status_code == 404
 
-    async def test_trigger_conflict(self, client, sample_task, sample_run):
-        resp = await client.post(f"/api/v1/tasks/{sample_task.id}/plan")
+    async def test_trigger_conflict(self, client, auth_headers, sample_task, sample_run):
+        resp = await client.post(
+            f"/api/v1/tasks/{sample_task.id}/plan", headers=auth_headers
+        )
         assert resp.status_code == 409
 
 
 class TestDashboardEndpoints:
-    async def test_stats_empty(self, client):
-        resp = await client.get("/api/v1/dashboard/stats")
+    async def test_stats_empty(self, client, auth_headers):
+        resp = await client.get("/api/v1/dashboard/stats", headers=auth_headers)
         assert resp.status_code == 200
         data = resp.json()
         assert data["total_cost_usd"] == 0
         assert data["active_runs"] == 0
         assert data["tasks_by_status"]["backlog"] == 0
 
-    async def test_stats_with_data(self, client, sample_task, sample_run):
+    async def test_stats_with_data(self, client, auth_headers, sample_task, sample_run):
         # Update run with cost
         await AgentRun.filter(id=sample_run.id).update(cost_usd=Decimal("0.50"))
-        resp = await client.get("/api/v1/dashboard/stats")
+        resp = await client.get("/api/v1/dashboard/stats", headers=auth_headers)
         assert resp.status_code == 200
         data = resp.json()
         assert data["total_cost_usd"] == 0.5
         assert data["active_runs"] == 1
         assert data["tasks_by_status"]["backlog"] == 1
 
-    async def test_costs_empty(self, client):
-        resp = await client.get("/api/v1/dashboard/costs")
+    async def test_costs_empty(self, client, auth_headers):
+        resp = await client.get("/api/v1/dashboard/costs", headers=auth_headers)
         assert resp.status_code == 200
         assert resp.json() == []
 
-    async def test_costs_with_data(self, client, sample_task, sample_run):
+    async def test_costs_with_data(self, client, auth_headers, sample_task, sample_run):
         await AgentRun.filter(id=sample_run.id).update(cost_usd=Decimal("1.50"))
-        resp = await client.get("/api/v1/dashboard/costs")
+        resp = await client.get("/api/v1/dashboard/costs", headers=auth_headers)
         assert resp.status_code == 200
         data = resp.json()
         assert len(data) == 1
@@ -154,14 +166,14 @@ class TestWebhookEndpoint:
 
 
 class TestIntegrationsEndpoint:
-    async def test_list_integrations(self, client):
-        resp = await client.get("/api/v1/integrations")
+    async def test_list_integrations(self, client, auth_headers):
+        resp = await client.get("/api/v1/integrations", headers=auth_headers)
         assert resp.status_code == 200
         data = resp.json()
         assert isinstance(data, list)
 
-    async def test_health_check(self, client):
-        resp = await client.get("/api/v1/integrations/health")
+    async def test_health_check(self, client, auth_headers):
+        resp = await client.get("/api/v1/integrations/health", headers=auth_headers)
         assert resp.status_code == 200
         data = resp.json()
         assert isinstance(data, list)
@@ -171,7 +183,7 @@ class TestIntegrationsEndpoint:
             assert "healthy" in entry
             assert "error" in entry
 
-    async def test_health_check_with_mock(self, client):
+    async def test_health_check_with_mock(self, client, auth_headers):
         from app.integrations.base import BaseIntegration
         from app.integrations.registry import IntegrationRegistry
 
@@ -197,7 +209,7 @@ class TestIntegrationsEndpoint:
                 HealthyIntegration(),
                 UnhealthyIntegration(),
             ]
-            resp = await client.get("/api/v1/integrations/health")
+            resp = await client.get("/api/v1/integrations/health", headers=auth_headers)
             assert resp.status_code == 200
             data = resp.json()
             assert len(data) == 2
@@ -208,7 +220,7 @@ class TestIntegrationsEndpoint:
         finally:
             IntegrationRegistry._integrations = original
 
-    async def test_health_check_exception(self, client):
+    async def test_health_check_exception(self, client, auth_headers):
         from app.integrations.base import BaseIntegration
         from app.integrations.registry import IntegrationRegistry
 
@@ -223,7 +235,7 @@ class TestIntegrationsEndpoint:
         original = IntegrationRegistry._integrations
         try:
             IntegrationRegistry._integrations = [ErrorIntegration()]
-            resp = await client.get("/api/v1/integrations/health")
+            resp = await client.get("/api/v1/integrations/health", headers=auth_headers)
             assert resp.status_code == 200
             data = resp.json()
             assert len(data) == 1
@@ -232,7 +244,7 @@ class TestIntegrationsEndpoint:
         finally:
             IntegrationRegistry._integrations = original
 
-    async def test_health_check_unconfigured(self, client):
+    async def test_health_check_unconfigured(self, client, auth_headers):
         from app.integrations.base import BaseIntegration
         from app.integrations.registry import IntegrationRegistry
 
@@ -247,7 +259,7 @@ class TestIntegrationsEndpoint:
         original = IntegrationRegistry._integrations
         try:
             IntegrationRegistry._integrations = [UnconfiguredIntegration()]
-            resp = await client.get("/api/v1/integrations/health")
+            resp = await client.get("/api/v1/integrations/health", headers=auth_headers)
             assert resp.status_code == 200
             data = resp.json()
             assert len(data) == 1
@@ -256,7 +268,7 @@ class TestIntegrationsEndpoint:
         finally:
             IntegrationRegistry._integrations = original
 
-    async def test_health_check_timeout(self, client):
+    async def test_health_check_timeout(self, client, auth_headers):
         import asyncio
 
         from app.integrations.base import BaseIntegration
@@ -276,7 +288,7 @@ class TestIntegrationsEndpoint:
             IntegrationRegistry._integrations = [SlowIntegration()]
             # Patch the timeout to 0.1s so test doesn't take 10s
             with patch("app.api.v1.asyncio.wait_for", side_effect=asyncio.TimeoutError):
-                resp = await client.get("/api/v1/integrations/health")
+                resp = await client.get("/api/v1/integrations/health", headers=auth_headers)
             assert resp.status_code == 200
             data = resp.json()
             assert data[0]["healthy"] is False
@@ -363,8 +375,8 @@ class TestIntegrationRegistry:
 
 
 class TestChatEndpoint:
-    async def test_list_messages_empty(self, client):
-        resp = await client.get("/api/v1/chat/messages")
+    async def test_list_messages_empty(self, client, auth_headers):
+        resp = await client.get("/api/v1/chat/messages", headers=auth_headers)
         assert resp.status_code == 200
         data = resp.json()
         assert data["total"] == 0
@@ -372,8 +384,8 @@ class TestChatEndpoint:
         assert data["offset"] == 0
         assert data["limit"] == 50
 
-    async def test_list_messages(self, client, sample_chat_message):
-        resp = await client.get("/api/v1/chat/messages")
+    async def test_list_messages(self, client, auth_headers, sample_chat_message):
+        resp = await client.get("/api/v1/chat/messages", headers=auth_headers)
         assert resp.status_code == 200
         data = resp.json()
         assert data["total"] == 1
@@ -383,7 +395,7 @@ class TestChatEndpoint:
         assert msg["user_name"] == "Jane Doe"
         assert msg["message"] == "Hello from Slack!"
 
-    async def test_list_messages_pagination(self, client):
+    async def test_list_messages_pagination(self, client, auth_headers):
         for i in range(5):
             await ChatMessage.create(
                 id=uuid.uuid4(),
@@ -392,13 +404,15 @@ class TestChatEndpoint:
                 message=f"Message {i}",
                 slack_ts=f"1.{i}",
             )
-        resp = await client.get("/api/v1/chat/messages?limit=2&offset=0")
+        resp = await client.get(
+            "/api/v1/chat/messages?limit=2&offset=0", headers=auth_headers
+        )
         assert resp.status_code == 200
         data = resp.json()
         assert data["total"] == 5
         assert len(data["messages"]) == 2
 
-    async def test_list_messages_channel_filter(self, client):
+    async def test_list_messages_channel_filter(self, client, auth_headers):
         await ChatMessage.create(
             id=uuid.uuid4(),
             channel_id="C_ALPHA",
@@ -413,7 +427,9 @@ class TestChatEndpoint:
             message="Beta msg",
             slack_ts="1.2",
         )
-        resp = await client.get("/api/v1/chat/messages?channel_id=C_ALPHA")
+        resp = await client.get(
+            "/api/v1/chat/messages?channel_id=C_ALPHA", headers=auth_headers
+        )
         assert resp.status_code == 200
         data = resp.json()
         assert data["total"] == 1

@@ -377,7 +377,7 @@
     <!-- ── Getting Started ──────────────────────────── -->
     <h2 id="overview">Overview</h2>
     <p>
-      Corsair is an open-source AI software engineering platform. It connects Slack, Jira, GitHub, and Claude Code into a unified autonomous workflow. Tag <code>@corsair</code> in Slack, and the platform plans the work, writes the code, and opens a pull request — with human approval at every stage.
+      Corsair is an open-source AI software engineering platform. It connects Slack, Jira, GitHub, and Claude Code into a unified autonomous workflow. Tag <code>@Corsair</code> in Slack, and the platform plans the work, writes the code, and opens a pull request — with human approval at every stage.
     </p>
     <p>
       The entire platform ships as a single Docker image using <strong>supervisord</strong> to run an nginx reverse proxy (serving the React frontend) and a uvicorn server (running the FastAPI backend with WebSocket and Slack bot support).
@@ -556,7 +556,7 @@
       Integrations live in <code>backend/app/integrations/</code>, each in its own directory. Built-in integrations:
     </p>
     <ul>
-      <li><strong>Slack</strong> — Socket Mode bot that listens for <code>@corsair</code> mentions and creates tasks</li>
+      <li><strong>Slack</strong> — Socket Mode bot that listens for <code>@Corsair</code> mentions and creates tasks</li>
       <li><strong>Jira</strong> — Creates and updates Jira tickets for each task</li>
       <li><strong>GitHub</strong> — Opens pull requests with branch management and Jira linking</li>
     </ul>
