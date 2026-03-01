@@ -4,6 +4,8 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from tortoise.contrib.fastapi import register_tortoise
 
+from app.api.v1 import dashboard_router, integrations_router, tasks_router, webhooks_router
+from app.api.v1.agent import router as agent_router
 from app.config import settings
 from app.db import TORTOISE_ORM
 from app.integrations.registry import IntegrationRegistry
@@ -37,6 +39,13 @@ def create_app() -> FastAPI:
         for status in IntegrationRegistry.get_status():
             state = "active" if status["active"] else "inactive"
             logger.info("  Integration: %s — %s", status["name"], state)
+
+    # Register routers
+    app.include_router(tasks_router)
+    app.include_router(dashboard_router)
+    app.include_router(webhooks_router)
+    app.include_router(integrations_router)
+    app.include_router(agent_router)
 
     @app.get("/health")
     async def health() -> dict:
