@@ -70,8 +70,10 @@ class SlackIntegration(BaseIntegration):
         logger.info("Slack bot: initializing Socket Mode listener")
 
         # Log bot identity for debugging
+        bot_user_id = None
         try:
             auth = await client.auth_test()
+            bot_user_id = auth.get("user_id")
             logger.info(
                 "Slack bot: authenticated as %s (bot_id=%s, user_id=%s)",
                 auth.get("bot_id", "?"), auth.get("bot_id", "?"), auth.get("user_id", "?"),
@@ -155,6 +157,8 @@ class SlackIntegration(BaseIntegration):
 
         @bolt_app.event("message")
         async def handle_message(event: dict, say: object) -> None:
+            from app.models.task import Task
+
             # Skip bot messages
             if event.get("bot_id") or event.get("subtype"):
                 return
@@ -165,9 +169,22 @@ class SlackIntegration(BaseIntegration):
             slack_ts = event.get("ts", "")
             thread_ts = event.get("thread_ts")
 
+            # Only persist messages that @mention Corsair or are replies
+            # in a thread started by a @mention
+            is_mention = bot_user_id and f"<@{bot_user_id}>" in text
+            is_mention_thread_reply = False
+            if thread_ts:
+                is_mention_thread_reply = await Task.exists().filter(
+                    slack_channel=channel_id,
+                    slack_thread_ts=thread_ts,
+                )
+
+            if not is_mention and not is_mention_thread_reply:
+                return
+
             logger.info(
-                "Slack bot: message from user=%s channel=%s (thread=%s)",
-                user_id, channel_id, thread_ts or "none",
+                "Slack bot: message from user=%s channel=%s (thread=%s, mention=%s)",
+                user_id, channel_id, thread_ts or "none", is_mention,
             )
 
             # Best-effort resolve names
