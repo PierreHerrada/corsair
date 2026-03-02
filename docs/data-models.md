@@ -182,6 +182,26 @@ Stores Datadog log/trace analysis results, triggered manually or via webhook.
 
 ---
 
+## internal_logs
+
+Stores internal application logs from integrations for debugging.
+
+| Field | Type | Constraints | Description |
+|---|---|---|---|
+| `id` | UUID | PK, auto-generated | Unique log entry identifier |
+| `source` | TEXT | NOT NULL | Integration source: `jira`, `slack`, `github`, `datadog`, `main` |
+| `level` | TEXT | NOT NULL | Log level: `DEBUG`, `INFO`, `WARNING`, `ERROR` |
+| `logger_name` | TEXT | NOT NULL | Full Python logger name |
+| `message` | TEXT | NOT NULL | Log message content |
+| `created_at` | TIMESTAMPTZ | NOT NULL, auto | Log entry timestamp |
+
+### Indexes
+- Primary key on `id`
+- Index on `created_at` (for ordering)
+- Index on `source` (for filtering)
+
+---
+
 ## Tortoise ORM Configuration
 
 ```python
@@ -198,6 +218,7 @@ TORTOISE_ORM = {
                 "app.models.conversation",
                 "app.models.chat_message",
                 "app.models.datadog_analysis",
+                "app.models.internal_log",
                 "aerich.models",
             ],
             "default_connection": "default",

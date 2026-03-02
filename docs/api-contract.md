@@ -404,6 +404,39 @@ Receives Datadog Monitor webhook payloads. Parses alert metadata and creates an 
 
 ---
 
+### Logs
+
+#### `GET /api/v1/logs`
+
+Returns paginated internal logs from integrations (Jira sync, Slack bot, etc.).
+
+**Query Parameters:**
+- `limit` (int, default 100, max 500) — Number of logs to return
+- `offset` (int, default 0) — Pagination offset
+- `source` (string, optional) — Filter by source: `jira`, `slack`, `github`, `datadog`, `main`
+- `level` (string, optional) — Filter by level: `DEBUG`, `INFO`, `WARNING`, `ERROR`
+
+**Response:** `200 OK`
+```json
+{
+  "total": 250,
+  "offset": 0,
+  "limit": 100,
+  "logs": [
+    {
+      "id": "uuid",
+      "source": "jira",
+      "level": "INFO",
+      "logger_name": "app.integrations.jira.sync",
+      "message": "Jira sync: found 3 issues matching label 'corsair'",
+      "created_at": "ISO 8601"
+    }
+  ]
+}
+```
+
+---
+
 ## WebSocket
 
 ### `WS /ws/runs/{run_id}`
@@ -542,6 +575,22 @@ interface DatadogAnalysis {
   summary: string;
   error_message: string | null;
   created_at: string;
+}
+
+interface InternalLogEntry {
+  id: string;
+  source: string;
+  level: string;
+  logger_name: string;
+  message: string;
+  created_at: string;
+}
+
+interface InternalLogsResponse {
+  total: number;
+  offset: number;
+  limit: number;
+  logs: InternalLogEntry[];
 }
 
 interface DatadogAnalysesResponse {

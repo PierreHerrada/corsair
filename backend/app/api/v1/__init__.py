@@ -10,6 +10,8 @@ from app.integrations.registry import IntegrationRegistry
 from .chat import router as chat_router
 from .dashboard import router as dashboard_router
 from .datadog import router as datadog_router
+from .jira import router as jira_router
+from .logs import router as logs_router
 from .tasks import router as tasks_router
 from .webhooks import router as webhooks_router
 
@@ -18,6 +20,8 @@ __all__ = [
     "dashboard_router",
     "datadog_router",
     "integrations_router",
+    "jira_router",
+    "logs_router",
     "tasks_router",
     "webhooks_router",
 ]

@@ -7,6 +7,7 @@ import Chat from "./pages/Chat";
 import Dashboard from "./pages/Dashboard";
 import Datadog from "./pages/Datadog";
 import Login from "./pages/Login";
+import Logs from "./pages/Logs";
 import Status from "./pages/Status";
 
 function AppContent() {
@@ -35,6 +36,9 @@ function AppContent() {
           </a>
           <a href="/datadog" className="text-mist hover:text-white text-sm">
             Datadog
+          </a>
+          <a href="/logs" className="text-mist hover:text-white text-sm">
+            Logs
           </a>
           <button
             onClick={toggleTheme}
@@ -90,6 +94,14 @@ function AppContent() {
           element={
             <ProtectedRoute>
               <Datadog />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/logs"
+          element={
+            <ProtectedRoute>
+              <Logs />
             </ProtectedRoute>
           }
         />

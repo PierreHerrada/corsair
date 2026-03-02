@@ -9,6 +9,8 @@ from app.api.v1 import (
     dashboard_router,
     datadog_router,
     integrations_router,
+    jira_router,
+    logs_router,
     tasks_router,
     webhooks_router,
 )
@@ -17,6 +19,7 @@ from app.auth import auth_router, get_current_user
 from app.config import settings
 from app.db import TORTOISE_ORM
 from app.integrations.registry import IntegrationRegistry
+from app.log_handler import setup_db_logging
 
 logging.basicConfig(
     level=logging.INFO,
@@ -46,6 +49,7 @@ def create_app() -> FastAPI:
 
     @app.on_event("startup")
     async def startup() -> None:
+        setup_db_logging()
         logger.info("Corsair starting up (environment=%s)", settings.environment)
         IntegrationRegistry.initialize()
         for status in IntegrationRegistry.get_status():
@@ -88,6 +92,8 @@ def create_app() -> FastAPI:
     app.include_router(integrations_router, dependencies=auth_dep)
     app.include_router(chat_router, dependencies=auth_dep)
     app.include_router(datadog_router, dependencies=auth_dep)
+    app.include_router(jira_router, dependencies=auth_dep)
+    app.include_router(logs_router, dependencies=auth_dep)
 
     # WebSocket router — auth handled inside the handler
     app.include_router(agent_router)

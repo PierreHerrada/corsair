@@ -112,6 +112,22 @@ export interface DatadogAnalysis {
   created_at: string;
 }
 
+export interface InternalLogEntry {
+  id: string;
+  source: string;
+  level: string;
+  logger_name: string;
+  message: string;
+  created_at: string;
+}
+
+export interface InternalLogsResponse {
+  total: number;
+  offset: number;
+  limit: number;
+  logs: InternalLogEntry[];
+}
+
 export interface DatadogAnalysesResponse {
   total: number;
   offset: number;

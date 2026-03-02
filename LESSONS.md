@@ -85,3 +85,11 @@ Read this file at the start of every phase and every new session.
 **Root cause:** Vitest's jsdom environment does not provide a fully functional `localStorage` implementation.
 **Solution:** Mock localStorage entirely using `Object.defineProperty(globalThis, "localStorage", { value: { getItem: vi.fn(), setItem: vi.fn(), ... } })` in the test file.
 **Applies to:** Any Vitest test that interacts with `localStorage`. Mock it rather than relying on jsdom's implementation.
+
+---
+
+### PHASE 8 — Jira sync silently failing due to missing search_issues method
+**Error:** `sync_jira_tickets()` called `jira.search_issues(jql)` which raised `AttributeError` caught by the blanket `except Exception`, causing the sync to silently return 0 every cycle.
+**Root cause:** The `search_issues` method was never implemented on `JiraIntegration` in `client.py`, even though `sync.py` depended on it.
+**Solution:** Added `search_issues(jql)` method to `JiraIntegration` that calls `/rest/api/3/search` with the JQL query. Also added verbose logging throughout Jira sync and Slack bot to make future issues visible in the new Logs tab.
+**Applies to:** Always verify that methods called cross-module actually exist. Blanket `except Exception` can hide missing method errors.

@@ -13,6 +13,7 @@ TORTOISE_ORM = {
                 "app.models.conversation",
                 "app.models.chat_message",
                 "app.models.datadog_analysis",
+                "app.models.internal_log",
             ],
             "default_connection": "default",
         },
