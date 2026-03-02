@@ -99,11 +99,9 @@ async def _trigger_stage(task_id: str, stage: RunStage, background_tasks: Backgr
     return _run_to_dict(run)
 
 
-async def _run_agent_background(task: Task, stage: RunStage, placeholder_run: AgentRun) -> None:
-    """Background task to run the agent. Replaces the placeholder run."""
-    # Delete the placeholder run since run_agent creates its own
-    await AgentRun.filter(id=placeholder_run.id).delete()
-    await run_agent(task, stage, ws_broadcast=ws_manager.broadcast)
+async def _run_agent_background(task: Task, stage: RunStage, existing_run: AgentRun) -> None:
+    """Background task to run the agent, reusing the already-created run."""
+    await run_agent(task, stage, ws_broadcast=ws_manager.broadcast, existing_run=existing_run)
 
 
 @router.post("/{task_id}/retry", status_code=200)

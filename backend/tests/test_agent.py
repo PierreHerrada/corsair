@@ -170,6 +170,41 @@ class TestRunAgent:
         task = await Task.get(id=sample_task.id)
         assert task.status == TaskStatus.FAILED
 
+    async def test_run_agent_with_existing_run(self, sample_task):
+        """When an existing_run is passed, run_agent reuses it instead of creating a new one."""
+        import json
+
+        existing_run = await AgentRun.create(
+            id=uuid.uuid4(),
+            task=sample_task,
+            stage=RunStage.PLAN,
+            status=RunStatus.RUNNING,
+        )
+
+        result_event = json.dumps({
+            "type": "result",
+            "cost_usd": 0.1,
+            "duration_ms": 1000,
+            "num_input_tokens": 1000,
+            "num_output_tokens": 500,
+        })
+        mock_process = AsyncMock()
+        mock_process.stdout = AsyncIteratorMock([result_event.encode() + b"\n"])
+        mock_process.stderr = AsyncMock()
+        mock_process.stderr.read = AsyncMock(return_value=b"")
+        mock_process.wait = AsyncMock(return_value=None)
+        mock_process.returncode = 0
+
+        with patch("asyncio.create_subprocess_exec", return_value=mock_process):
+            run = await run_agent(sample_task, RunStage.PLAN, existing_run=existing_run)
+
+        # Should reuse the same run ID
+        assert run.id == existing_run.id
+        assert run.status == RunStatus.DONE
+        # Should not have created an extra run
+        total_runs = await AgentRun.filter(task_id=sample_task.id).count()
+        assert total_runs == 1
+
 
 class TestBasePrompt:
     async def test_get_base_prompt_returns_value(self):
