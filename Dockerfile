@@ -23,9 +23,12 @@ RUN pip install --no-cache-dir -r requirements.txt
 # --- Stage 3: Final Image ---
 FROM python:3.12-slim
 
-# Install nginx and supervisord
+# Install nginx, supervisord, and Node.js (for Claude Code CLI)
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends nginx supervisor && \
+    apt-get install -y --no-install-recommends nginx supervisor curl && \
+    curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && \
+    apt-get install -y --no-install-recommends nodejs && \
+    npm install -g @anthropic-ai/claude-code && \
     rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
