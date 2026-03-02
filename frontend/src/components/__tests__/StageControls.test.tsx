@@ -1,11 +1,13 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import { triggerStage } from "../../api/tasks";
+import { stopTask, triggerStage } from "../../api/tasks";
 import type { Task } from "../../types";
 import StageControls from "../StageControls";
 
 vi.mock("../../api/tasks", () => ({
   triggerStage: vi.fn(),
+  stopTask: vi.fn(),
+  retryTask: vi.fn(),
 }));
 
 function makeTask(overrides: Partial<Task> = {}): Task {
@@ -56,11 +58,11 @@ describe("StageControls", () => {
     expect(screen.queryByRole("button")).not.toBeInTheDocument();
   });
 
-  it("shows no buttons for failed tasks", () => {
+  it("shows Retry button for failed tasks", () => {
     render(
       <StageControls task={makeTask({ status: "failed" })} onRefresh={vi.fn()} />
     );
-    expect(screen.queryByRole("button")).not.toBeInTheDocument();
+    expect(screen.getByText("Retry")).toBeInTheDocument();
   });
 
   it("calls triggerStage and onRefresh when clicked", async () => {
@@ -85,6 +87,78 @@ describe("StageControls", () => {
 
     await waitFor(() => {
       expect(triggerStage).toHaveBeenCalledWith("t1", "plan");
+      expect(onRefresh).toHaveBeenCalled();
+    });
+  });
+
+  it("shows Stop button when a run is active", () => {
+    render(
+      <StageControls
+        task={makeTask({
+          status: "backlog",
+          latest_run: {
+            id: "r1",
+            task_id: "t1",
+            stage: "plan",
+            status: "running",
+            tokens_in: 0,
+            tokens_out: 0,
+            cost_usd: 0,
+            started_at: "2025-01-01T00:00:00Z",
+            finished_at: null,
+          },
+        })}
+        onRefresh={vi.fn()}
+      />
+    );
+    expect(screen.getByText("Stop")).toBeInTheDocument();
+  });
+
+  it("does not show Stop button when no run is active", () => {
+    render(
+      <StageControls task={makeTask({ status: "backlog" })} onRefresh={vi.fn()} />
+    );
+    expect(screen.queryByText("Stop")).not.toBeInTheDocument();
+  });
+
+  it("calls stopTask and onRefresh when Stop is clicked", async () => {
+    const onRefresh = vi.fn();
+    vi.mocked(stopTask).mockResolvedValueOnce({
+      id: "r1",
+      task_id: "t1",
+      stage: "plan",
+      status: "running",
+      tokens_in: 0,
+      tokens_out: 0,
+      cost_usd: 0,
+      started_at: "2025-01-01T00:00:00Z",
+      finished_at: null,
+    });
+
+    render(
+      <StageControls
+        task={makeTask({
+          status: "backlog",
+          latest_run: {
+            id: "r1",
+            task_id: "t1",
+            stage: "plan",
+            status: "running",
+            tokens_in: 0,
+            tokens_out: 0,
+            cost_usd: 0,
+            started_at: "2025-01-01T00:00:00Z",
+            finished_at: null,
+          },
+        })}
+        onRefresh={onRefresh}
+      />
+    );
+
+    fireEvent.click(screen.getByText("Stop"));
+
+    await waitFor(() => {
+      expect(stopTask).toHaveBeenCalledWith("t1");
       expect(onRefresh).toHaveBeenCalled();
     });
   });

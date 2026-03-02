@@ -7,7 +7,7 @@ from typing import Optional
 from fastapi import APIRouter, BackgroundTasks, HTTPException
 from pydantic import BaseModel
 
-from app.agent.runner import run_agent
+from app.agent.runner import run_agent, stop_run
 from app.models import AgentLog, AgentRun, RunStage, RunStatus, Task, TaskStatus
 from app.websocket.manager import ws_manager
 
@@ -138,6 +138,24 @@ async def retry_task(task_id: str) -> dict:
     task.status = new_status
     await task.save()
     return await _task_to_dict(task)
+
+
+@router.post("/{task_id}/stop", status_code=200)
+async def stop_task(task_id: str) -> dict:
+    """Stop a running agent for a task."""
+    task = await Task.filter(id=task_id).first()
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    active_run = await AgentRun.filter(task_id=task_id, status=RunStatus.RUNNING).first()
+    if not active_run:
+        raise HTTPException(status_code=409, detail="No active run for this task")
+
+    stopped = stop_run(str(active_run.id))
+    if not stopped:
+        raise HTTPException(status_code=409, detail="No active run for this task")
+
+    return _run_to_dict(active_run)
 
 
 @router.get("/{task_id}/runs")

@@ -116,6 +116,14 @@ Update task status.
 
 **Error:** `404 Not Found`, `422 Unprocessable Entity`
 
+#### `POST /api/v1/tasks/{id}/stop`
+
+Stop a running agent for a task. Terminates the subprocess.
+
+**Response:** `200 OK` — The active run object (same shape as AgentRun)
+
+**Error:** `404 Not Found` (task not found), `409 Conflict` (no active run)
+
 #### `POST /api/v1/tasks/{id}/plan`
 
 Trigger the Plan stage for a task. Creates an AgentRun and starts Claude Code subprocess.

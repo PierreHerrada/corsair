@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { retryTask, triggerStage } from "../api/tasks";
+import { retryTask, stopTask, triggerStage } from "../api/tasks";
 import type { Task } from "../types";
 
 interface StageControlsProps {
@@ -14,6 +14,18 @@ export default function StageControls({ task, onRefresh }: StageControlsProps) {
     setLoading(stage);
     try {
       await triggerStage(task.id, stage);
+      onRefresh();
+    } catch {
+      // Error handling could be improved
+    } finally {
+      setLoading(null);
+    }
+  };
+
+  const handleStop = async () => {
+    setLoading("stop");
+    try {
+      await stopTask(task.id);
       onRefresh();
     } catch {
       // Error handling could be improved
@@ -38,6 +50,15 @@ export default function StageControls({ task, onRefresh }: StageControlsProps) {
 
   return (
     <div className="flex gap-2">
+      {isRunning && (
+        <button
+          onClick={handleStop}
+          disabled={loading !== null}
+          className="text-xs px-3 py-1 rounded bg-coral/20 text-coral hover:bg-coral/30 disabled:opacity-50"
+        >
+          {loading === "stop" ? "Stopping..." : "Stop"}
+        </button>
+      )}
       {task.status === "failed" && (
         <button
           onClick={handleRetry}

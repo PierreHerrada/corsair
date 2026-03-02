@@ -120,6 +120,37 @@ class TestTasksEndpoints:
         )
         assert resp.status_code == 409
 
+    async def test_stop_task_no_active_run(self, client, auth_headers, sample_task):
+        resp = await client.post(
+            f"/api/v1/tasks/{sample_task.id}/stop", headers=auth_headers
+        )
+        assert resp.status_code == 409
+
+    async def test_stop_task_not_found(self, client, auth_headers):
+        fake_id = str(uuid.uuid4())
+        resp = await client.post(
+            f"/api/v1/tasks/{fake_id}/stop", headers=auth_headers
+        )
+        assert resp.status_code == 404
+
+    async def test_stop_task_success(self, client, auth_headers, sample_task, sample_run):
+        with patch("app.api.v1.tasks.stop_run", return_value=True):
+            resp = await client.post(
+                f"/api/v1/tasks/{sample_task.id}/stop", headers=auth_headers
+            )
+            assert resp.status_code == 200
+            data = resp.json()
+            assert data["id"] == str(sample_run.id)
+            assert data["status"] == "running"
+
+    async def test_stop_task_process_not_in_registry(self, client, auth_headers, sample_task, sample_run):
+        """Active run in DB but process not in registry (e.g. race condition)."""
+        with patch("app.api.v1.tasks.stop_run", return_value=False):
+            resp = await client.post(
+                f"/api/v1/tasks/{sample_task.id}/stop", headers=auth_headers
+            )
+            assert resp.status_code == 409
+
 
 class TestDashboardEndpoints:
     async def test_stats_empty(self, client, auth_headers):

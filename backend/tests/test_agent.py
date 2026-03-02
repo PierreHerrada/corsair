@@ -8,7 +8,15 @@ import pytest
 
 from app.agent.cost import TokenUsage, parse_claude_code_usage
 from app.agent.prompts import build_plan_prompt, build_review_prompt, build_work_prompt
-from app.agent.runner import _get_base_prompt, _notify_run_complete, run_agent, save_log
+from app.agent.runner import (
+    _active_processes,
+    _get_base_prompt,
+    _notify_run_complete,
+    _stopped_runs,
+    run_agent,
+    save_log,
+    stop_run,
+)
 from app.models import AgentLog, AgentRun, LogType, RunStage, RunStatus, Setting, Task, TaskStatus
 from app.websocket.manager import ConnectionManager
 
@@ -354,3 +362,59 @@ class TestConnectionManager:
         mock_log = MagicMock()
         # Should not raise
         await mgr.broadcast("nonexistent", mock_log)
+
+
+class TestStopRun:
+    def test_stop_run_returns_false_when_not_found(self):
+        assert stop_run("nonexistent-id") is False
+
+    def test_stop_run_terminates_process(self):
+        mock_process = MagicMock()
+        run_id = "test-run-id"
+        _active_processes[run_id] = mock_process
+        try:
+            result = stop_run(run_id)
+            assert result is True
+            mock_process.terminate.assert_called_once()
+            assert run_id in _stopped_runs
+        finally:
+            _active_processes.pop(run_id, None)
+            _stopped_runs.discard(run_id)
+
+    async def test_stopped_run_does_not_fail_task(self, sample_task):
+        """When a run is stopped by user, task status should NOT change to FAILED."""
+        import json
+
+        mock_process = AsyncMock()
+        mock_process.stdout = AsyncIteratorMock([])
+        mock_process.stderr = AsyncMock()
+        mock_process.stderr.read = AsyncMock(return_value=b"")
+        mock_process.wait = AsyncMock(return_value=None)
+        mock_process.returncode = -15  # SIGTERM
+
+        original_status = sample_task.status
+
+        with patch("asyncio.create_subprocess_exec", return_value=mock_process):
+            # Pre-register the run as stopped — we need to know the run ID
+            # so we patch _stopped_runs after run creation
+            with patch("app.agent.runner._stopped_runs", new=set()) as stopped:
+                with patch("app.agent.runner._active_processes", new={}) as active:
+                    # We need to intercept the run_id after creation
+                    original_create = AgentRun.create
+
+                    async def patched_create(**kwargs):
+                        run = await original_create(**kwargs)
+                        stopped.add(str(run.id))
+                        return run
+
+                    with patch.object(AgentRun, "create", side_effect=patched_create):
+                        run = await run_agent(sample_task, RunStage.PLAN)
+
+        assert run.status == RunStatus.FAILED
+        # Task should NOT be set to FAILED
+        task = await Task.get(id=sample_task.id)
+        assert task.status == original_status
+
+        # Verify the "Stopped by user" log was saved
+        logs = await AgentLog.filter(run_id=run.id, type=LogType.ERROR).all()
+        assert any("Stopped by user" in log.content.get("message", "") for log in logs)

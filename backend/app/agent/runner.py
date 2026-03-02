@@ -16,6 +16,20 @@ from app.models import AgentLog, AgentRun, LogType, RunStage, RunStatus, Task, T
 
 logger = logging.getLogger(__name__)
 
+# In-memory process registry for stopping running agents
+_active_processes: dict[str, asyncio.subprocess.Process] = {}
+_stopped_runs: set[str] = set()
+
+
+def stop_run(run_id: str) -> bool:
+    """Terminate a running agent process. Returns True if process was found and signaled."""
+    process = _active_processes.get(run_id)
+    if process is None:
+        return False
+    _stopped_runs.add(run_id)
+    process.terminate()
+    return True
+
 
 async def save_log(
     run_id: uuid.UUID, content: dict, log_type: LogType = LogType.TEXT
@@ -151,15 +165,20 @@ async def run_agent(
     stage: RunStage,
     ws_broadcast: Optional[object] = None,
     repo_path: Optional[str] = None,
+    existing_run: Optional[AgentRun] = None,
 ) -> AgentRun:
     """Execute Claude Code CLI for a given task and stage."""
-    run = await AgentRun.create(
-        id=uuid.uuid4(),
-        task=task,
-        stage=stage,
-        status=RunStatus.RUNNING,
-    )
+    if existing_run is not None:
+        run = existing_run
+    else:
+        run = await AgentRun.create(
+            id=uuid.uuid4(),
+            task=task,
+            stage=stage,
+            status=RunStatus.RUNNING,
+        )
 
+    run_id_str = str(run.id)
     prompt = _build_prompt(task, stage)
     base_prompt = await _get_base_prompt()
     if base_prompt:
@@ -182,6 +201,7 @@ async def run_agent(
             stderr=asyncio.subprocess.PIPE,
             env={**os.environ, "ANTHROPIC_API_KEY": settings.anthropic_api_key},
         )
+        _active_processes[run_id_str] = process
 
         # Stream stdout line by line — each line is a JSON event
         async for line in process.stdout:
@@ -222,6 +242,7 @@ async def run_agent(
                 await Task.filter(id=task.id).update(status=new_status)
             await _notify_run_complete(task, stage, success=True)
         else:
+            stopped_by_user = run_id_str in _stopped_runs
             await AgentRun.filter(id=run.id).update(
                 status=RunStatus.FAILED,
                 tokens_in=tokens_in,
@@ -229,23 +250,40 @@ async def run_agent(
                 cost_usd=float(cost),
                 finished_at=datetime.now(timezone.utc),
             )
-            await Task.filter(id=task.id).update(status=TaskStatus.FAILED)
-            stderr_output = (await process.stderr.read()).decode()
-            await save_log(
-                run.id,
-                {"message": f"Process exited with code {process.returncode}\n{stderr_output}"},
-                LogType.ERROR,
-            )
+            if stopped_by_user:
+                # User stopped: don't set task to FAILED, leave at current status
+                _stopped_runs.discard(run_id_str)
+                await save_log(
+                    run.id,
+                    {"message": "Stopped by user"},
+                    LogType.ERROR,
+                )
+                logger.info("Run %s stopped by user for task %s", run.id, task.id)
+            else:
+                await Task.filter(id=task.id).update(status=TaskStatus.FAILED)
+                stderr_output = (await process.stderr.read()).decode()
+                await save_log(
+                    run.id,
+                    {"message": f"Process exited with code {process.returncode}\n{stderr_output}"},
+                    LogType.ERROR,
+                )
             await _notify_run_complete(task, stage, success=False)
 
     except Exception as e:
         logger.exception("Agent run failed for task %s stage %s", task.id, stage)
+        stopped_by_user = run_id_str in _stopped_runs
         await AgentRun.filter(id=run.id).update(
             status=RunStatus.FAILED,
             finished_at=datetime.now(timezone.utc),
         )
-        await Task.filter(id=task.id).update(status=TaskStatus.FAILED)
-        await save_log(run.id, {"message": str(e)}, LogType.ERROR)
+        if stopped_by_user:
+            _stopped_runs.discard(run_id_str)
+            await save_log(run.id, {"message": "Stopped by user"}, LogType.ERROR)
+        else:
+            await Task.filter(id=task.id).update(status=TaskStatus.FAILED)
+            await save_log(run.id, {"message": str(e)}, LogType.ERROR)
         await _notify_run_complete(task, stage, success=False)
+    finally:
+        _active_processes.pop(run_id_str, None)
 
     return await AgentRun.get(id=run.id)

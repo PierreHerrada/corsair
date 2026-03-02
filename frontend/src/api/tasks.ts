@@ -39,6 +39,14 @@ export async function triggerStage(
   return resp.json();
 }
 
+export async function stopTask(id: string): Promise<AgentRun> {
+  const resp = await apiFetch(`${BASE}/tasks/${id}/stop`, {
+    method: "POST",
+  });
+  if (!resp.ok) throw new Error("Failed to stop task");
+  return resp.json();
+}
+
 export async function retryTask(id: string): Promise<Task> {
   const resp = await apiFetch(`${BASE}/tasks/${id}/retry`, {
     method: "POST",
