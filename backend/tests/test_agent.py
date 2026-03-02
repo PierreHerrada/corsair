@@ -8,8 +8,8 @@ import pytest
 
 from app.agent.cost import TokenUsage, parse_claude_code_usage
 from app.agent.prompts import build_plan_prompt, build_review_prompt, build_work_prompt
-from app.agent.runner import run_agent, save_log
-from app.models import AgentLog, AgentRun, LogType, RunStage, RunStatus, Task, TaskStatus
+from app.agent.runner import _get_base_prompt, _notify_run_complete, run_agent, save_log
+from app.models import AgentLog, AgentRun, LogType, RunStage, RunStatus, Setting, Task, TaskStatus
 from app.websocket.manager import ConnectionManager
 
 
@@ -99,23 +99,30 @@ class TestPrompts:
 
 class TestSaveLog:
     async def test_save_log(self, sample_run):
-        log = await save_log(sample_run.id, "Test message")
+        log = await save_log(sample_run.id, {"message": "Test message"})
         assert log.type == LogType.TEXT
         assert log.content == {"message": "Test message"}
 
     async def test_save_error_log(self, sample_run):
-        log = await save_log(sample_run.id, "Error occurred", LogType.ERROR)
+        log = await save_log(sample_run.id, {"message": "Error occurred"}, LogType.ERROR)
         assert log.type == LogType.ERROR
 
 
 class TestRunAgent:
     async def test_run_agent_success(self, sample_task):
+        import json
+
+        result_event = json.dumps({
+            "type": "result",
+            "cost_usd": 0.3,
+            "duration_ms": 5000,
+            "num_input_tokens": 50000,
+            "num_output_tokens": 10000,
+        })
         mock_process = AsyncMock()
-        mock_process.stdout = AsyncIteratorMock([b"Analyzing code...\n", b"Writing plan...\n"])
+        mock_process.stdout = AsyncIteratorMock([result_event.encode() + b"\n"])
         mock_process.stderr = AsyncMock()
-        mock_process.stderr.read = AsyncMock(
-            return_value=b"Input: 50000 tokens\nOutput: 10000 tokens\n"
-        )
+        mock_process.stderr.read = AsyncMock(return_value=b"")
         mock_process.wait = AsyncMock(return_value=None)
         mock_process.returncode = 0
 
@@ -131,7 +138,7 @@ class TestRunAgent:
 
     async def test_run_agent_failure(self, sample_task):
         mock_process = AsyncMock()
-        mock_process.stdout = AsyncIteratorMock([b"Error...\n"])
+        mock_process.stdout = AsyncIteratorMock([b'{"type":"error","error":{"message":"fail"}}\n'])
         mock_process.stderr = AsyncMock()
         mock_process.stderr.read = AsyncMock(return_value=b"")
         mock_process.wait = AsyncMock(return_value=None)
@@ -154,6 +161,148 @@ class TestRunAgent:
 
         task = await Task.get(id=sample_task.id)
         assert task.status == TaskStatus.FAILED
+
+
+class TestBasePrompt:
+    async def test_get_base_prompt_returns_value(self):
+        await Setting.create(
+            id=uuid.uuid4(),
+            key="base_prompt",
+            value="Always write tests first.",
+        )
+        result = await _get_base_prompt()
+        assert result == "Always write tests first."
+
+    async def test_get_base_prompt_returns_empty_when_not_set(self):
+        result = await _get_base_prompt()
+        assert result == ""
+
+    async def test_get_base_prompt_returns_empty_for_whitespace(self):
+        await Setting.create(
+            id=uuid.uuid4(),
+            key="base_prompt",
+            value="   ",
+        )
+        result = await _get_base_prompt()
+        assert result == ""
+
+    async def test_base_prompt_prepended_to_agent_call(self, sample_task):
+        await Setting.create(
+            id=uuid.uuid4(),
+            key="base_prompt",
+            value="Custom instructions here.",
+        )
+
+        mock_process = AsyncMock()
+        mock_process.stdout = AsyncIteratorMock([])
+        mock_process.stderr = AsyncMock()
+        mock_process.stderr.read = AsyncMock(return_value=b"")
+        mock_process.wait = AsyncMock(return_value=None)
+        mock_process.returncode = 0
+
+        with patch("asyncio.create_subprocess_exec", return_value=mock_process) as mock_exec:
+            await run_agent(sample_task, RunStage.PLAN)
+            call_args = mock_exec.call_args
+            prompt_arg = call_args[0][-1]  # last positional arg is the prompt
+            assert prompt_arg.startswith("Custom instructions here.\n\n")
+
+    async def test_no_base_prompt_not_prepended(self, sample_task):
+        mock_process = AsyncMock()
+        mock_process.stdout = AsyncIteratorMock([])
+        mock_process.stderr = AsyncMock()
+        mock_process.stderr.read = AsyncMock(return_value=b"")
+        mock_process.wait = AsyncMock(return_value=None)
+        mock_process.returncode = 0
+
+        with patch("asyncio.create_subprocess_exec", return_value=mock_process) as mock_exec:
+            await run_agent(sample_task, RunStage.PLAN)
+            call_args = mock_exec.call_args
+            prompt_arg = call_args[0][-1]
+            assert not prompt_arg.startswith("Custom instructions here.")
+            assert "senior software engineer" in prompt_arg
+
+
+class TestNotifyRunComplete:
+    async def test_notify_success_calls_jira_and_slack(self, sample_task):
+        sample_task.jira_key = "SWE-42"
+        await sample_task.save()
+
+        mock_jira = AsyncMock()
+        mock_jira.add_comment = AsyncMock(return_value=True)
+
+        mock_slack = AsyncMock()
+        mock_slack.post_thread_update = AsyncMock(return_value={"ts": "1"})
+
+        with patch(
+            "app.integrations.registry.IntegrationRegistry.get",
+            side_effect=lambda n: {"jira": mock_jira, "slack": mock_slack}.get(n),
+        ):
+            await _notify_run_complete(sample_task, RunStage.PLAN, success=True)
+
+        mock_jira.add_comment.assert_called_once_with(
+            "SWE-42", "Plan stage completed successfully."
+        )
+        mock_slack.post_thread_update.assert_called_once_with(
+            "C123456", "1234567890.123456", "Plan stage completed successfully."
+        )
+
+    async def test_notify_failure_message(self, sample_task):
+        sample_task.jira_key = "SWE-42"
+        await sample_task.save()
+
+        mock_jira = AsyncMock()
+        mock_jira.add_comment = AsyncMock(return_value=True)
+
+        mock_slack = AsyncMock()
+        mock_slack.post_thread_update = AsyncMock(return_value={"ts": "1"})
+
+        with patch(
+            "app.integrations.registry.IntegrationRegistry.get",
+            side_effect=lambda n: {"jira": mock_jira, "slack": mock_slack}.get(n),
+        ):
+            await _notify_run_complete(sample_task, RunStage.WORK, success=False)
+
+        mock_jira.add_comment.assert_called_once_with("SWE-42", "Work stage failed.")
+        mock_slack.post_thread_update.assert_called_once_with(
+            "C123456", "1234567890.123456", "Work stage failed."
+        )
+
+    async def test_notify_skips_jira_when_no_key(self, sample_task):
+        mock_jira = AsyncMock()
+        mock_jira.name = "jira"
+
+        with patch(
+            "app.integrations.registry.IntegrationRegistry.get",
+            return_value=None,
+        ):
+            await _notify_run_complete(sample_task, RunStage.PLAN, success=True)
+
+        mock_jira.add_comment.assert_not_called()
+
+    async def test_notify_does_not_crash_on_jira_error(self, sample_task):
+        sample_task.jira_key = "SWE-42"
+        await sample_task.save()
+
+        mock_jira = AsyncMock()
+        mock_jira.add_comment = AsyncMock(side_effect=Exception("Jira down"))
+
+        with patch(
+            "app.integrations.registry.IntegrationRegistry.get",
+            side_effect=lambda n: {"jira": mock_jira}.get(n),
+        ):
+            # Should not raise
+            await _notify_run_complete(sample_task, RunStage.PLAN, success=True)
+
+    async def test_notify_does_not_crash_on_slack_error(self, sample_task):
+        mock_slack = AsyncMock()
+        mock_slack.post_thread_update = AsyncMock(side_effect=Exception("Slack down"))
+
+        with patch(
+            "app.integrations.registry.IntegrationRegistry.get",
+            side_effect=lambda n: {"slack": mock_slack}.get(n),
+        ):
+            # Should not raise
+            await _notify_run_complete(sample_task, RunStage.PLAN, success=True)
 
 
 class TestConnectionManager:

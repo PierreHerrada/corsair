@@ -25,6 +25,7 @@ MODELS = [
     "app.models.agent_log",
     "app.models.conversation",
     "app.models.chat_message",
+    "app.models.setting",
 ]
 
 

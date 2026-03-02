@@ -46,3 +46,13 @@ export async function retryTask(id: string): Promise<Task> {
   if (!resp.ok) throw new Error("Failed to retry task");
   return resp.json();
 }
+
+export interface RunWithLogs extends AgentRun {
+  logs: import("../types").AgentLog[];
+}
+
+export async function fetchTaskRuns(id: string): Promise<RunWithLogs[]> {
+  const resp = await apiFetch(`${BASE}/tasks/${id}/runs`);
+  if (!resp.ok) throw new Error("Failed to fetch task runs");
+  return resp.json();
+}

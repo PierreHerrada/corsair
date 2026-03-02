@@ -8,7 +8,9 @@ import Dashboard from "./pages/Dashboard";
 import Datadog from "./pages/Datadog";
 import Login from "./pages/Login";
 import Logs from "./pages/Logs";
+import Settings from "./pages/Settings";
 import Status from "./pages/Status";
+import TaskDetail from "./pages/TaskDetail";
 
 function AppContent() {
   const { theme, toggleTheme } = useTheme();
@@ -39,6 +41,9 @@ function AppContent() {
           </a>
           <a href="/logs" className="text-mist hover:text-white text-sm">
             Logs
+          </a>
+          <a href="/settings" className="text-mist hover:text-white text-sm">
+            Settings
           </a>
           <button
             onClick={toggleTheme}
@@ -98,10 +103,26 @@ function AppContent() {
           }
         />
         <Route
+          path="/tasks/:taskId"
+          element={
+            <ProtectedRoute>
+              <TaskDetail />
+            </ProtectedRoute>
+          }
+        />
+        <Route
           path="/logs"
           element={
             <ProtectedRoute>
               <Logs />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/settings"
+          element={
+            <ProtectedRoute>
+              <Settings />
             </ProtectedRoute>
           }
         />

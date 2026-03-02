@@ -12,6 +12,7 @@ from app.models import (
     MessageRole,
     RunStage,
     RunStatus,
+    Setting,
     Task,
     TaskStatus,
 )
@@ -229,3 +230,38 @@ class TestChatMessage:
     async def test_chat_message_str(self, sample_chat_message):
         assert "Jane Doe" in str(sample_chat_message)
         assert "general" in str(sample_chat_message)
+
+
+class TestSetting:
+    async def test_create_setting(self):
+        setting = await Setting.create(
+            id=uuid.uuid4(),
+            key="base_prompt",
+            value="You are a helpful assistant.",
+        )
+        assert setting.key == "base_prompt"
+        assert setting.value == "You are a helpful assistant."
+        assert setting.updated_at is not None
+
+    async def test_setting_default_value(self):
+        setting = await Setting.create(
+            id=uuid.uuid4(),
+            key="empty_setting",
+        )
+        assert setting.value == ""
+
+    async def test_setting_unique_key(self):
+        await Setting.create(id=uuid.uuid4(), key="unique_key", value="v1")
+        with pytest.raises(Exception):
+            await Setting.create(id=uuid.uuid4(), key="unique_key", value="v2")
+
+    async def test_setting_update(self):
+        setting = await Setting.create(id=uuid.uuid4(), key="test_key", value="old")
+        setting.value = "new"
+        await setting.save()
+        refreshed = await Setting.get(id=setting.id)
+        assert refreshed.value == "new"
+
+    async def test_setting_str(self):
+        setting = await Setting.create(id=uuid.uuid4(), key="str_key", value="test_val")
+        assert "str_key" in str(setting)

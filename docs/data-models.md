@@ -202,6 +202,23 @@ Stores internal application logs from integrations for debugging.
 
 ---
 
+## settings
+
+Stores application-level configuration as key-value pairs.
+
+| Field | Type | Constraints | Description |
+|---|---|---|---|
+| `id` | UUID | PK, auto-generated | Unique setting identifier |
+| `key` | TEXT | NOT NULL, UNIQUE | Setting key (e.g., `base_prompt`) |
+| `value` | TEXT | NOT NULL, default '' | Setting value |
+| `updated_at` | TIMESTAMPTZ | NOT NULL, auto-update | Last modification time |
+
+### Indexes
+- Primary key on `id`
+- Unique index on `key` (for fast lookup)
+
+---
+
 ## Tortoise ORM Configuration
 
 ```python
@@ -219,6 +236,7 @@ TORTOISE_ORM = {
                 "app.models.chat_message",
                 "app.models.datadog_analysis",
                 "app.models.internal_log",
+                "app.models.setting",
                 "aerich.models",
             ],
             "default_connection": "default",

@@ -374,6 +374,56 @@ class TestIntegrationRegistry:
             IntegrationRegistry._active = original_active
 
 
+class TestSettingsEndpoints:
+    async def test_get_setting_not_set(self, client, auth_headers):
+        resp = await client.get("/api/v1/settings/base_prompt", headers=auth_headers)
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["key"] == "base_prompt"
+        assert data["value"] == ""
+        assert data["updated_at"] is None
+
+    async def test_put_setting_create(self, client, auth_headers):
+        resp = await client.put(
+            "/api/v1/settings/base_prompt",
+            json={"value": "You are a senior engineer."},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["key"] == "base_prompt"
+        assert data["value"] == "You are a senior engineer."
+        assert data["updated_at"] is not None
+
+    async def test_put_setting_update(self, client, auth_headers):
+        await client.put(
+            "/api/v1/settings/base_prompt",
+            json={"value": "old value"},
+            headers=auth_headers,
+        )
+        resp = await client.put(
+            "/api/v1/settings/base_prompt",
+            json={"value": "new value"},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 200
+        assert resp.json()["value"] == "new value"
+
+    async def test_get_setting_after_put(self, client, auth_headers):
+        await client.put(
+            "/api/v1/settings/base_prompt",
+            json={"value": "test prompt"},
+            headers=auth_headers,
+        )
+        resp = await client.get("/api/v1/settings/base_prompt", headers=auth_headers)
+        assert resp.status_code == 200
+        assert resp.json()["value"] == "test prompt"
+
+    async def test_settings_require_auth(self, client):
+        resp = await client.get("/api/v1/settings/base_prompt")
+        assert resp.status_code in (401, 403)
+
+
 class TestChatEndpoint:
     async def test_list_messages_empty(self, client, auth_headers):
         resp = await client.get("/api/v1/chat/messages", headers=auth_headers)

@@ -437,6 +437,41 @@ Returns paginated internal logs from integrations (Jira sync, Slack bot, etc.).
 
 ---
 
+### Settings
+
+#### `GET /api/v1/settings/{key}`
+
+Returns the value of a single setting. Returns empty value if the setting has not been configured yet.
+
+**Response:** `200 OK`
+```json
+{
+  "key": "string",
+  "value": "string",
+  "updated_at": "ISO 8601|null"
+}
+```
+
+#### `PUT /api/v1/settings/{key}`
+
+Create or update a setting.
+
+**Request Body:**
+```json
+{"value": "string"}
+```
+
+**Response:** `200 OK`
+```json
+{
+  "key": "string",
+  "value": "string",
+  "updated_at": "ISO 8601"
+}
+```
+
+---
+
 ## WebSocket
 
 ### `WS /ws/runs/{run_id}`
@@ -598,5 +633,11 @@ interface DatadogAnalysesResponse {
   offset: number;
   limit: number;
   analyses: DatadogAnalysis[];
+}
+
+interface SettingResponse {
+  key: string;
+  value: string;
+  updated_at: string | null;
 }
 ```

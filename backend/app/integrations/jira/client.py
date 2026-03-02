@@ -148,6 +148,42 @@ class JiraIntegration(BaseIntegration):
                 "url": f"{self._get_base_url()}/browse/{data['key']}",
             }
 
+    async def add_comment(self, issue_key: str, body: str) -> bool:
+        """Add a comment to a Jira issue."""
+        url = f"{self._get_base_url()}/rest/api/3/issue/{issue_key}/comment"
+        payload = {
+            "body": {
+                "type": "doc",
+                "version": 1,
+                "content": [
+                    {
+                        "type": "paragraph",
+                        "content": [{"type": "text", "text": body}],
+                    }
+                ],
+            }
+        }
+        logger.info("Jira: adding comment to %s", issue_key)
+        try:
+            async with httpx.AsyncClient() as client:
+                resp = await client.post(
+                    url,
+                    headers=self._get_headers(),
+                    json=payload,
+                    timeout=30,
+                )
+                if resp.status_code == 201:
+                    logger.info("Jira: comment added to %s", issue_key)
+                    return True
+                logger.error(
+                    "Jira: add comment to %s failed with status %d — %s",
+                    issue_key, resp.status_code, resp.text[:500],
+                )
+                return False
+        except Exception:
+            logger.exception("Jira: failed to add comment to %s", issue_key)
+            return False
+
     async def update_status(self, issue_key: str, transition_name: str) -> bool:
         async with httpx.AsyncClient() as client:
             resp = await client.get(

@@ -1,3 +1,4 @@
+import { Link } from "react-router-dom";
 import type { Task, TaskStatus } from "../types";
 import PRBadge from "./PRBadge";
 import StageControls from "./StageControls";
@@ -20,9 +21,12 @@ export default function TaskCard({ task, onRefresh }: TaskCardProps) {
   return (
     <div className="bg-abyss border border-foam/8 rounded-lg p-4 mb-3">
       <div className="flex items-start justify-between mb-2">
-        <h3 className="text-sm font-medium text-white leading-tight">
+        <Link
+          to={`/tasks/${task.id}`}
+          className="text-sm font-medium text-white leading-tight hover:text-sky transition-colors"
+        >
           {task.title}
-        </h3>
+        </Link>
         <span
           className={`text-xs px-2 py-0.5 rounded-full ${STATUS_STYLES[task.status]}`}
         >

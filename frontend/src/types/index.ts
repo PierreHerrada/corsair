@@ -134,3 +134,9 @@ export interface DatadogAnalysesResponse {
   limit: number;
   analyses: DatadogAnalysis[];
 }
+
+export interface SettingResponse {
+  key: string;
+  value: string;
+  updated_at: string | null;
+}

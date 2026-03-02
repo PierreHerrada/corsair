@@ -1,4 +1,5 @@
 import logging
+from datetime import datetime, timezone
 
 from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -11,6 +12,7 @@ from app.api.v1 import (
     integrations_router,
     jira_router,
     logs_router,
+    settings_router,
     tasks_router,
     webhooks_router,
 )
@@ -81,6 +83,31 @@ def create_app() -> FastAPI:
             except Exception:
                 logger.exception("Failed to start Jira sync")
 
+    @app.on_event("shutdown")
+    async def shutdown() -> None:
+        logger.info("Corsair shutting down — marking active agent runs as failed")
+
+        from app.integrations.jira.sync import stop_sync
+        from app.models import AgentRun, RunStatus, Task, TaskStatus
+
+        stop_sync()
+
+        now = datetime.now(timezone.utc)
+        running_runs = await AgentRun.filter(status=RunStatus.RUNNING).select_related("task")
+        for run in running_runs:
+            run.status = RunStatus.FAILED
+            run.finished_at = now
+            await run.save()
+            logger.info("Marked run %s (task %s) as failed", run.id, run.task_id)
+
+            task = run.task
+            if task.status in (TaskStatus.WORKING, TaskStatus.REVIEWING):
+                task.status = TaskStatus.FAILED
+                await task.save()
+                logger.info("Marked task %s as failed", task.id)
+
+        logger.info("Shutdown cleanup complete")
+
     # Public routers (no auth)
     app.include_router(auth_router)
     app.include_router(webhooks_router)
@@ -94,6 +121,7 @@ def create_app() -> FastAPI:
     app.include_router(datadog_router, dependencies=auth_dep)
     app.include_router(jira_router, dependencies=auth_dep)
     app.include_router(logs_router, dependencies=auth_dep)
+    app.include_router(settings_router, dependencies=auth_dep)
 
     # WebSocket router — auth handled inside the handler
     app.include_router(agent_router)

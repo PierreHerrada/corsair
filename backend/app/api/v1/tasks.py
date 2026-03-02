@@ -8,7 +8,7 @@ from fastapi import APIRouter, BackgroundTasks, HTTPException
 from pydantic import BaseModel
 
 from app.agent.runner import run_agent
-from app.models import AgentRun, RunStage, RunStatus, Task, TaskStatus
+from app.models import AgentLog, AgentRun, RunStage, RunStatus, Task, TaskStatus
 from app.websocket.manager import ws_manager
 
 logger = logging.getLogger(__name__)
@@ -138,6 +138,31 @@ async def retry_task(task_id: str) -> dict:
     task.status = new_status
     await task.save()
     return await _task_to_dict(task)
+
+
+@router.get("/{task_id}/runs")
+async def list_task_runs(task_id: str) -> list[dict]:
+    """Get all runs for a task, with their logs."""
+    task = await Task.filter(id=task_id).first()
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    runs = await AgentRun.filter(task_id=task_id).order_by("-started_at")
+    result = []
+    for run in runs:
+        logs = await AgentLog.filter(run_id=run.id).order_by("created_at")
+        run_dict = _run_to_dict(run)
+        run_dict["logs"] = [
+            {
+                "id": str(log.id),
+                "run_id": str(log.run_id),
+                "type": log.type.value,
+                "content": log.content,
+                "created_at": log.created_at.isoformat() if log.created_at else None,
+            }
+            for log in logs
+        ]
+        result.append(run_dict)
+    return result
 
 
 @router.post("/{task_id}/plan", status_code=201)

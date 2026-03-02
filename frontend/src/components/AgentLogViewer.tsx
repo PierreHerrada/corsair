@@ -8,6 +8,13 @@ const LOG_COLORS: Record<LogType, string> = {
   error: "text-coral",
 };
 
+const LOG_PREFIXES: Record<LogType, string> = {
+  text: "",
+  tool_use: "TOOL ",
+  tool_result: "RESULT ",
+  error: "ERROR ",
+};
+
 interface AgentLogViewerProps {
   logs: AgentLog[];
   connected: boolean;
@@ -23,27 +30,27 @@ export default function AgentLogViewer({ logs, connected }: AgentLogViewerProps)
   return (
     <div className="bg-abyss border border-foam/8 rounded-lg overflow-hidden">
       <div className="flex items-center justify-between px-4 py-2 bg-navy border-b border-foam/8">
-        <span className="text-sm text-mist">Agent Logs</span>
+        <span className="text-sm text-mist">
+          Agent Logs ({logs.length})
+        </span>
         <span
           className={`text-xs px-2 py-0.5 rounded-full ${
             connected ? "bg-teal/20 text-teal" : "bg-coral/20 text-coral"
           }`}
         >
-          {connected ? "Connected" : "Disconnected"}
+          {connected ? "Live" : "Stored"}
         </span>
       </div>
-      <div className="p-4 max-h-96 overflow-y-auto font-mono text-xs leading-relaxed">
+      <div className="p-4 max-h-[70vh] overflow-y-auto font-mono text-xs leading-relaxed">
         {logs.length === 0 ? (
-          <span className="text-mist/50">Waiting for logs...</span>
+          <span className="text-mist/50">No logs yet...</span>
         ) : (
           logs.map((log) => (
             <div key={log.id} className={`mb-1 ${LOG_COLORS[log.type]}`}>
-              <span className="text-mist/50 mr-2">
-                [{log.type}]
+              <span className="text-mist/40 mr-2">
+                {LOG_PREFIXES[log.type]}
               </span>
-              {typeof log.content === "object" && "message" in log.content
-                ? String(log.content.message)
-                : JSON.stringify(log.content)}
+              {renderLogContent(log)}
             </div>
           ))
         )}
@@ -51,4 +58,12 @@ export default function AgentLogViewer({ logs, connected }: AgentLogViewerProps)
       </div>
     </div>
   );
+}
+
+function renderLogContent(log: AgentLog): string {
+  const content = log.content;
+  if (typeof content === "object" && "message" in content) {
+    return String(content.message);
+  }
+  return JSON.stringify(content);
 }
