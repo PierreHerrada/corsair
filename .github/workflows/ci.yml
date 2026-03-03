@@ -29,7 +29,7 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install -r backend/requirements.txt
-      - run: cd backend && pytest tests/ --cov=app --cov-report=xml --cov-fail-under=80
+      - run: cd backend && pytest tests/ app/integrations/*/tests/ --cov=app --cov-report=xml --cov-fail-under=80
       - uses: codecov/codecov-action@v4
         with:
           file: backend/coverage.xml

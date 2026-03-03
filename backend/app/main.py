@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from datetime import datetime, timezone
 
@@ -84,6 +85,22 @@ def create_app() -> FastAPI:
             except Exception:
                 logger.exception("Failed to start Jira sync")
 
+        # Start hourly workspace cleanup
+        async def _workspace_cleanup_loop() -> None:
+            from app.agent.workspace import cleanup_old_workspaces
+
+            while True:
+                await asyncio.sleep(3600)  # every hour
+                try:
+                    cleaned = await cleanup_old_workspaces(retention_hours=24)
+                    if cleaned:
+                        logger.info("Workspace cleanup: removed %d old workspaces", cleaned)
+                except Exception:
+                    logger.exception("Workspace cleanup failed")
+
+        app.state.workspace_cleanup_task = asyncio.create_task(_workspace_cleanup_loop())
+        logger.info("Workspace cleanup task started (hourly, 24h retention)")
+
     @app.on_event("shutdown")
     async def shutdown() -> None:
         logger.info("Corsair shutting down — marking active agent runs as failed")
@@ -92,6 +109,11 @@ def create_app() -> FastAPI:
         from app.models import AgentRun, RunStatus, Task, TaskStatus
 
         stop_sync()
+
+        # Cancel workspace cleanup task
+        cleanup_task = getattr(app.state, "workspace_cleanup_task", None)
+        if cleanup_task:
+            cleanup_task.cancel()
 
         now = datetime.now(timezone.utc)
         running_runs = await AgentRun.filter(status=RunStatus.RUNNING).select_related("task")

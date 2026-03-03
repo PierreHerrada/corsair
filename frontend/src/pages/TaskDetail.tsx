@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
 import { useParams, Link } from "react-router-dom";
-import { fetchTask, fetchTaskRuns, type RunWithLogs } from "../api/tasks";
+import { fetchTask, fetchTaskRuns, updateTaskRepo, type RunWithLogs } from "../api/tasks";
+import { fetchRepositories } from "../api/repositories";
 import { useWebSocket } from "../hooks/useWebSocket";
 import AgentLogViewer from "../components/AgentLogViewer";
+import FileTreeViewer from "../components/FileTreeViewer";
 import StageControls from "../components/StageControls";
-import type { Task, AgentLog } from "../types";
+import type { Task, AgentLog, Repository } from "../types";
 
 const STATUS_STYLES: Record<string, string> = {
   backlog: "bg-foam/20 text-foam",
@@ -27,6 +29,7 @@ export default function TaskDetail() {
   const [runs, setRuns] = useState<RunWithLogs[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
+  const [repos, setRepos] = useState<Repository[]>([]);
 
   // Find the active running run for live WebSocket streaming
   const activeRunId = runs.find((r) => r.status === "running")?.id ?? null;
@@ -52,6 +55,9 @@ export default function TaskDetail() {
 
   useEffect(() => {
     refresh();
+    fetchRepositories()
+      .then((r) => setRepos(r.filter((repo) => repo.enabled)))
+      .catch(() => {});
   }, [refresh]);
 
   // Auto-refresh while a run is active
@@ -60,6 +66,16 @@ export default function TaskDetail() {
     const interval = setInterval(refresh, 5000);
     return () => clearInterval(interval);
   }, [activeRunId, refresh]);
+
+  const handleRepoChange = async (repo: string) => {
+    if (!taskId) return;
+    try {
+      const updated = await updateTaskRepo(taskId, repo || null);
+      setTask(updated);
+    } catch {
+      // ignore
+    }
+  };
 
   if (loading && !task) {
     return (
@@ -133,6 +149,28 @@ export default function TaskDetail() {
           <StageControls task={task} onRefresh={refresh} />
         </div>
 
+        {/* Repo selector */}
+        {repos.length > 0 && (
+          <div className="mb-3">
+            <h3 className="text-xs text-mist/70 uppercase tracking-wide mb-1">Repository</h3>
+            <select
+              value={task.repo || ""}
+              onChange={(e) => handleRepoChange(e.target.value)}
+              className="text-sm bg-navy border border-foam/8 rounded px-3 py-1.5 text-mist focus:outline-none focus:border-sky/50"
+            >
+              <option value="">No repository</option>
+              {repos.map((repo) => (
+                <option key={repo.id} value={repo.full_name}>
+                  {repo.full_name}
+                </option>
+              ))}
+            </select>
+            {task.repo && (
+              <span className="ml-2 text-xs text-mist/50">{task.repo}</span>
+            )}
+          </div>
+        )}
+
         {task.description && (
           <div className="mb-3">
             <h3 className="text-xs text-mist/70 uppercase tracking-wide mb-1">Description</h3>
@@ -176,10 +214,21 @@ export default function TaskDetail() {
         </div>
       )}
 
-      {/* Agent logs */}
-      <div>
-        <AgentLogViewer logs={displayLogs} connected={connected && liveRunId === activeRunId} />
-      </div>
+      {/* Agent logs + file tree */}
+      {selectedRun?.file_tree && selectedRun.file_tree.length > 0 ? (
+        <div className="grid grid-cols-3 gap-4">
+          <div className="col-span-1">
+            <FileTreeViewer fileTree={selectedRun.file_tree} />
+          </div>
+          <div className="col-span-2">
+            <AgentLogViewer logs={displayLogs} connected={connected && liveRunId === activeRunId} />
+          </div>
+        </div>
+      ) : (
+        <div>
+          <AgentLogViewer logs={displayLogs} connected={connected && liveRunId === activeRunId} />
+        </div>
+      )}
     </div>
   );
 }

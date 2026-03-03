@@ -29,6 +29,9 @@ class Settings(BaseSettings):
     github_token: str = ""
     github_org: str = ""
 
+    # Workspaces
+    workspace_base_dir: str = "/home/corsair/workspaces"
+
     # App
     admin_password: str = "changeme"
     jwt_secret: str = "change-this-jwt-secret-in-production"

@@ -498,7 +498,14 @@ class TestRepoValidationGate:
         mock_process.wait = AsyncMock(return_value=None)
         mock_process.returncode = 0
 
-        with patch("asyncio.create_subprocess_exec", return_value=mock_process):
+        with patch("app.agent.runner.create_workspace") as mock_ws, \
+             patch("app.agent.runner.clone_repo"), \
+             patch("app.agent.runner.write_claude_md"), \
+             patch("app.agent.runner.capture_file_tree", return_value=[]), \
+             patch("asyncio.create_subprocess_exec", return_value=mock_process):
+            from pathlib import Path
+
+            mock_ws.return_value = Path("/tmp/fake-ws")
             run = await run_agent(sample_task, RunStage.PLAN)
             assert run.status == RunStatus.DONE
 
@@ -515,7 +522,14 @@ class TestRepoValidationGate:
         mock_process.wait = AsyncMock(return_value=None)
         mock_process.returncode = 0
 
-        with patch("asyncio.create_subprocess_exec", return_value=mock_process):
+        with patch("app.agent.runner.create_workspace") as mock_ws, \
+             patch("app.agent.runner.clone_repo"), \
+             patch("app.agent.runner.write_claude_md"), \
+             patch("app.agent.runner.capture_file_tree", return_value=[]), \
+             patch("asyncio.create_subprocess_exec", return_value=mock_process):
+            from pathlib import Path
+
+            mock_ws.return_value = Path("/tmp/fake-ws")
             run = await run_agent(sample_task, RunStage.PLAN)
             assert run.status == RunStatus.DONE
 
@@ -540,6 +554,356 @@ class TestRepoValidationGate:
         with patch("asyncio.create_subprocess_exec", return_value=mock_process):
             run = await run_agent(sample_task, RunStage.PLAN)
             assert run.status == RunStatus.DONE
+
+
+class TestRunAgentWorkspace:
+    async def test_run_agent_creates_workspace_for_repo_task(self, sample_task):
+        """When task has a repo, run_agent should create workspace, clone, and set cwd."""
+        import json
+
+        sample_task.repo = "org/my-app"
+        await sample_task.save()
+
+        await Repository.create(
+            id=uuid.uuid4(),
+            full_name="org/my-app",
+            name="my-app",
+            enabled=True,
+            default_branch="develop",
+        )
+
+        result_event = json.dumps({
+            "type": "result",
+            "num_input_tokens": 100,
+            "num_output_tokens": 50,
+        })
+        mock_process = AsyncMock()
+        mock_process.stdout = AsyncIteratorMock([result_event.encode() + b"\n"])
+        mock_process.stderr = AsyncMock()
+        mock_process.stderr.read = AsyncMock(return_value=b"")
+        mock_process.wait = AsyncMock(return_value=None)
+        mock_process.returncode = 0
+
+        with patch("app.agent.runner.create_workspace") as mock_create_ws, \
+             patch("app.agent.runner.clone_repo") as mock_clone, \
+             patch("app.agent.runner.write_claude_md") as mock_write_claude, \
+             patch("app.agent.runner.capture_file_tree", return_value=[{"path": "README.md", "type": "file", "size": 10}]), \
+             patch("asyncio.create_subprocess_exec", return_value=mock_process) as mock_exec:
+            from pathlib import Path
+
+            mock_create_ws.return_value = Path("/tmp/fake-workspace")
+
+            run = await run_agent(sample_task, RunStage.PLAN)
+
+            mock_create_ws.assert_called_once()
+            mock_clone.assert_called_once()
+            # Verify branch passed from Repository record
+            clone_call_kwargs = mock_clone.call_args
+            assert clone_call_kwargs[0][2] == "develop"
+
+            # Verify cwd was set to workspace
+            exec_call = mock_exec.call_args
+            assert exec_call.kwargs["cwd"] == "/tmp/fake-workspace"
+
+            assert run.status == RunStatus.DONE
+
+    async def test_run_agent_workspace_clone_failure_marks_failed(self, sample_task):
+        """When clone fails, run should be marked FAILED immediately."""
+        sample_task.repo = "org/broken-repo"
+        await sample_task.save()
+
+        await Repository.create(
+            id=uuid.uuid4(),
+            full_name="org/broken-repo",
+            name="broken-repo",
+            enabled=True,
+        )
+
+        with patch("app.agent.runner.create_workspace") as mock_create_ws, \
+             patch("app.agent.runner.clone_repo", side_effect=RuntimeError("clone failed")):
+            from pathlib import Path
+
+            mock_create_ws.return_value = Path("/tmp/fake-workspace")
+
+            run = await run_agent(sample_task, RunStage.PLAN)
+
+            assert run.status == RunStatus.FAILED
+
+        task = await Task.get(id=sample_task.id)
+        assert task.status == TaskStatus.FAILED
+
+        logs = await AgentLog.filter(run_id=run.id, type=LogType.ERROR).all()
+        assert any("Workspace setup failed" in log.content.get("message", "") for log in logs)
+
+    async def test_run_agent_no_workspace_when_no_repo(self, sample_task):
+        """When task has no repo, workspace should not be created."""
+        assert sample_task.repo is None
+
+        mock_process = AsyncMock()
+        mock_process.stdout = AsyncIteratorMock([])
+        mock_process.stderr = AsyncMock()
+        mock_process.stderr.read = AsyncMock(return_value=b"")
+        mock_process.wait = AsyncMock(return_value=None)
+        mock_process.returncode = 0
+
+        with patch("app.agent.runner.create_workspace") as mock_create_ws, \
+             patch("asyncio.create_subprocess_exec", return_value=mock_process):
+            await run_agent(sample_task, RunStage.PLAN)
+            mock_create_ws.assert_not_called()
+
+    async def test_run_agent_writes_claude_md_with_base_prompt(self, sample_task):
+        """When base_prompt exists, CLAUDE.md should be written to workspace."""
+        import json
+
+        sample_task.repo = "org/my-app"
+        await sample_task.save()
+
+        await Repository.create(
+            id=uuid.uuid4(),
+            full_name="org/my-app",
+            name="my-app",
+            enabled=True,
+        )
+
+        await Setting.create(
+            id=uuid.uuid4(),
+            key="base_prompt",
+            value="Always write tests first.",
+        )
+
+        result_event = json.dumps({
+            "type": "result",
+            "num_input_tokens": 100,
+            "num_output_tokens": 50,
+        })
+        mock_process = AsyncMock()
+        mock_process.stdout = AsyncIteratorMock([result_event.encode() + b"\n"])
+        mock_process.stderr = AsyncMock()
+        mock_process.stderr.read = AsyncMock(return_value=b"")
+        mock_process.wait = AsyncMock(return_value=None)
+        mock_process.returncode = 0
+
+        with patch("app.agent.runner.create_workspace") as mock_create_ws, \
+             patch("app.agent.runner.clone_repo"), \
+             patch("app.agent.runner.write_claude_md") as mock_write, \
+             patch("app.agent.runner.capture_file_tree", return_value=[]), \
+             patch("asyncio.create_subprocess_exec", return_value=mock_process):
+            from pathlib import Path
+
+            mock_create_ws.return_value = Path("/tmp/fake-workspace")
+
+            await run_agent(sample_task, RunStage.PLAN)
+
+            mock_write.assert_called_once_with(
+                Path("/tmp/fake-workspace"),
+                "Always write tests first.",
+            )
+
+    async def test_run_agent_captures_file_tree_after_run(self, sample_task):
+        """File tree should be captured and stored after run completes."""
+        import json
+
+        sample_task.repo = "org/my-app"
+        await sample_task.save()
+
+        await Repository.create(
+            id=uuid.uuid4(),
+            full_name="org/my-app",
+            name="my-app",
+            enabled=True,
+        )
+
+        result_event = json.dumps({
+            "type": "result",
+            "num_input_tokens": 100,
+            "num_output_tokens": 50,
+        })
+        mock_process = AsyncMock()
+        mock_process.stdout = AsyncIteratorMock([result_event.encode() + b"\n"])
+        mock_process.stderr = AsyncMock()
+        mock_process.stderr.read = AsyncMock(return_value=b"")
+        mock_process.wait = AsyncMock(return_value=None)
+        mock_process.returncode = 0
+
+        fake_tree = [
+            {"path": "README.md", "type": "file", "size": 100},
+            {"path": "src", "type": "dir"},
+        ]
+
+        with patch("app.agent.runner.create_workspace") as mock_create_ws, \
+             patch("app.agent.runner.clone_repo"), \
+             patch("app.agent.runner.write_claude_md"), \
+             patch("app.agent.runner.capture_file_tree", return_value=fake_tree), \
+             patch("os.path.isdir", return_value=True), \
+             patch("asyncio.create_subprocess_exec", return_value=mock_process):
+            from pathlib import Path
+
+            mock_create_ws.return_value = Path("/tmp/fake-workspace")
+
+            run = await run_agent(sample_task, RunStage.PLAN)
+
+        # Refresh from DB
+        updated_run = await AgentRun.get(id=run.id)
+        assert updated_run.file_tree is not None
+        assert len(updated_run.file_tree) == 2
+
+
+    async def test_run_agent_workspace_step_logs(self, sample_task):
+        """Workspace setup should produce visible log entries for each step."""
+        import json
+
+        sample_task.repo = "org/my-app"
+        await sample_task.save()
+
+        await Repository.create(
+            id=uuid.uuid4(),
+            full_name="org/my-app",
+            name="my-app",
+            enabled=True,
+            default_branch="main",
+        )
+
+        await Setting.create(
+            id=uuid.uuid4(),
+            key="base_prompt",
+            value="Test instructions.",
+        )
+
+        result_event = json.dumps({
+            "type": "result",
+            "num_input_tokens": 100,
+            "num_output_tokens": 50,
+        })
+        mock_process = AsyncMock()
+        mock_process.stdout = AsyncIteratorMock([result_event.encode() + b"\n"])
+        mock_process.stderr = AsyncMock()
+        mock_process.stderr.read = AsyncMock(return_value=b"")
+        mock_process.wait = AsyncMock(return_value=None)
+        mock_process.returncode = 0
+
+        fake_tree = [{"path": "README.md", "type": "file", "size": 10}]
+
+        with patch("app.agent.runner.create_workspace") as mock_create_ws, \
+             patch("app.agent.runner.clone_repo"), \
+             patch("app.agent.runner.write_claude_md"), \
+             patch("app.agent.runner.capture_file_tree", return_value=fake_tree), \
+             patch("asyncio.create_subprocess_exec", return_value=mock_process):
+            from pathlib import Path
+
+            mock_create_ws.return_value = Path("/tmp/fake-workspace")
+
+            run = await run_agent(sample_task, RunStage.PLAN)
+
+        assert run.status == RunStatus.DONE
+        logs = await AgentLog.filter(run_id=run.id).order_by("created_at").all()
+        messages = [log.content.get("message", "") for log in logs]
+
+        # Verify each workspace step produced a log
+        assert any("Creating workspace" in m for m in messages)
+        assert any("Cloning org/my-app" in m for m in messages)
+        assert any("Cloned org/my-app successfully" in m for m in messages)
+        assert any("CLAUDE.md" in m for m in messages)
+        assert any("Workspace ready" in m for m in messages)
+        assert any("Launching Claude Code" in m for m in messages)
+
+    async def test_run_agent_workspace_initial_file_tree_captured(self, sample_task):
+        """File tree should be captured right after clone, before Claude runs."""
+        import json
+
+        sample_task.repo = "org/my-app"
+        await sample_task.save()
+
+        await Repository.create(
+            id=uuid.uuid4(),
+            full_name="org/my-app",
+            name="my-app",
+            enabled=True,
+        )
+
+        fake_tree = [
+            {"path": "src", "type": "dir"},
+            {"path": "src/main.py", "type": "file", "size": 50},
+        ]
+
+        file_tree_at_cli_launch = None
+
+        async def capture_tree_at_launch(*args, **kwargs):
+            nonlocal file_tree_at_cli_launch
+            run_record = await AgentRun.filter(task_id=sample_task.id).first()
+            file_tree_at_cli_launch = run_record.file_tree
+            return mock_process
+
+        mock_process = AsyncMock()
+        mock_process.stdout = AsyncIteratorMock([])
+        mock_process.stderr = AsyncMock()
+        mock_process.stderr.read = AsyncMock(return_value=b"")
+        mock_process.wait = AsyncMock(return_value=None)
+        mock_process.returncode = 0
+
+        with patch("app.agent.runner.create_workspace") as mock_create_ws, \
+             patch("app.agent.runner.clone_repo"), \
+             patch("app.agent.runner.write_claude_md"), \
+             patch("app.agent.runner.capture_file_tree", return_value=fake_tree), \
+             patch("asyncio.create_subprocess_exec", side_effect=capture_tree_at_launch):
+            from pathlib import Path
+
+            mock_create_ws.return_value = Path("/tmp/fake-workspace")
+
+            await run_agent(sample_task, RunStage.PLAN)
+
+        # File tree should have been set BEFORE Claude CLI launched
+        assert file_tree_at_cli_launch is not None
+        assert len(file_tree_at_cli_launch) == 2
+
+    async def test_run_agent_workspace_broadcast_logs(self, sample_task):
+        """Workspace step logs should be broadcast via WebSocket."""
+        import json
+
+        sample_task.repo = "org/my-app"
+        await sample_task.save()
+
+        await Repository.create(
+            id=uuid.uuid4(),
+            full_name="org/my-app",
+            name="my-app",
+            enabled=True,
+        )
+
+        result_event = json.dumps({
+            "type": "result",
+            "num_input_tokens": 100,
+            "num_output_tokens": 50,
+        })
+        mock_process = AsyncMock()
+        mock_process.stdout = AsyncIteratorMock([result_event.encode() + b"\n"])
+        mock_process.stderr = AsyncMock()
+        mock_process.stderr.read = AsyncMock(return_value=b"")
+        mock_process.wait = AsyncMock(return_value=None)
+        mock_process.returncode = 0
+
+        mock_broadcast = AsyncMock()
+
+        with patch("app.agent.runner.create_workspace") as mock_create_ws, \
+             patch("app.agent.runner.clone_repo"), \
+             patch("app.agent.runner.write_claude_md"), \
+             patch("app.agent.runner.capture_file_tree", return_value=[]), \
+             patch("asyncio.create_subprocess_exec", return_value=mock_process):
+            from pathlib import Path
+
+            mock_create_ws.return_value = Path("/tmp/fake-workspace")
+
+            await run_agent(
+                sample_task, RunStage.PLAN, ws_broadcast=mock_broadcast,
+            )
+
+        # Workspace setup should have broadcast multiple logs
+        broadcast_messages = [
+            call.args[1].content.get("message", "")
+            for call in mock_broadcast.call_args_list
+        ]
+        assert any("Creating workspace" in m for m in broadcast_messages)
+        assert any("Cloning" in m for m in broadcast_messages)
+        assert any("Launching Claude Code" in m for m in broadcast_messages)
 
 
 class TestGetEnabledRepos:

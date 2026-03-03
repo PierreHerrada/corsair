@@ -25,6 +25,12 @@ export interface Task {
   latest_run: AgentRun | null;
 }
 
+export interface FileTreeEntry {
+  path: string;
+  type: "file" | "dir";
+  size?: number;
+}
+
 export interface AgentRun {
   id: string;
   task_id: string;
@@ -35,6 +41,8 @@ export interface AgentRun {
   cost_usd: number;
   started_at: string;
   finished_at: string | null;
+  workspace_path: string | null;
+  file_tree: FileTreeEntry[] | null;
 }
 
 export interface AgentLog {

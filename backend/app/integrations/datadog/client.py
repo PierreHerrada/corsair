@@ -70,7 +70,7 @@ class DatadogIntegration(BaseIntegration):
     async def get_trace(self, trace_id: str) -> list[dict]:
         payload = {
             "filter": {
-                "query": f"@trace_id:{trace_id}",
+                "query": f"trace_id:{trace_id}",
                 "from": "now-24h",
                 "to": "now",
             },

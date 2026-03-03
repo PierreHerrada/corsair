@@ -26,6 +26,8 @@ class AgentRun(Model):
     cost_usd = fields.DecimalField(max_digits=10, decimal_places=6, default=0)
     started_at = fields.DatetimeField(auto_now_add=True)
     finished_at = fields.DatetimeField(null=True)
+    workspace_path = fields.TextField(null=True)
+    file_tree = fields.JSONField(null=True)
 
     logs: fields.ReverseRelation["AgentLog"]  # noqa: F821
 

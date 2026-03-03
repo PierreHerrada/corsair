@@ -93,7 +93,9 @@ Returns a single task with its latest agent run and recent logs.
     "tokens_out": 0,
     "cost_usd": 0.000000,
     "started_at": "ISO 8601",
-    "finished_at": "ISO 8601|null"
+    "finished_at": "ISO 8601|null",
+    "workspace_path": "string|null",
+    "file_tree": [{"path": "string", "type": "file|dir", "size": 0}]
   }
 }
 ```
@@ -149,6 +151,8 @@ Returns all agent runs for a task, including their logs, ordered by `started_at`
     "cost_usd": 0.000000,
     "started_at": "ISO 8601",
     "finished_at": "ISO 8601|null",
+    "workspace_path": "string|null",
+    "file_tree": null,
     "logs": [
       {
         "id": "uuid",
@@ -158,6 +162,27 @@ Returns all agent runs for a task, including their logs, ordered by `started_at`
         "created_at": "ISO 8601"
       }
     ]
+  }
+]
+```
+
+**Error:** `404 Not Found`
+
+#### `GET /api/v1/tasks/{id}/runs/{run_id}/files`
+
+Returns the file tree for a specific agent run.
+
+**Response:** `200 OK`
+```json
+[
+  {
+    "path": "src/main.py",
+    "type": "file",
+    "size": 1234
+  },
+  {
+    "path": "src",
+    "type": "dir"
   }
 ]
 ```
@@ -179,7 +204,9 @@ Trigger the Plan stage for a task. Creates an AgentRun and starts Claude Code su
   "tokens_out": 0,
   "cost_usd": 0.000000,
   "started_at": "ISO 8601",
-  "finished_at": null
+  "finished_at": null,
+  "workspace_path": "string|null",
+  "file_tree": null
 }
 ```
 
@@ -634,6 +661,12 @@ interface Task {
   latest_run: AgentRun | null;
 }
 
+interface FileTreeEntry {
+  path: string;
+  type: "file" | "dir";
+  size?: number;
+}
+
 interface AgentRun {
   id: string;
   task_id: string;
@@ -644,6 +677,8 @@ interface AgentRun {
   cost_usd: number;
   started_at: string;
   finished_at: string | null;
+  workspace_path: string | null;
+  file_tree: FileTreeEntry[] | null;
 }
 
 interface AgentLog {

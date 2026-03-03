@@ -1,4 +1,5 @@
 import { render, screen, waitFor } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 import Board from "../Board";
 
@@ -9,10 +10,14 @@ vi.mock("../../api/tasks", () => ({
 
 import { fetchTasks } from "../../api/tasks";
 
+function renderWithRouter(ui: React.ReactElement) {
+  return render(<MemoryRouter>{ui}</MemoryRouter>);
+}
+
 describe("Board", () => {
   it("shows loading state initially", () => {
     vi.mocked(fetchTasks).mockReturnValue(new Promise(() => {}));
-    render(<Board />);
+    renderWithRouter(<Board />);
     expect(screen.getByText("Loading tasks...")).toBeInTheDocument();
   });
 
@@ -34,7 +39,7 @@ describe("Board", () => {
         latest_run: null,
       },
     ]);
-    render(<Board />);
+    renderWithRouter(<Board />);
     await waitFor(() => {
       expect(screen.getByText("Task Board")).toBeInTheDocument();
       expect(screen.getByText("Test task")).toBeInTheDocument();
@@ -43,7 +48,7 @@ describe("Board", () => {
 
   it("shows error when fetch fails", async () => {
     vi.mocked(fetchTasks).mockRejectedValueOnce(new Error("Network error"));
-    render(<Board />);
+    renderWithRouter(<Board />);
     await waitFor(() => {
       expect(screen.getByText("Network error")).toBeInTheDocument();
     });
@@ -51,7 +56,7 @@ describe("Board", () => {
 
   it("renders the Refresh button", async () => {
     vi.mocked(fetchTasks).mockResolvedValueOnce([]);
-    render(<Board />);
+    renderWithRouter(<Board />);
     await waitFor(() => {
       expect(screen.getByText("Refresh")).toBeInTheDocument();
     });

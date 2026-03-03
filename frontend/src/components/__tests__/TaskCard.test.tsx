@@ -1,4 +1,5 @@
 import { render, screen } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 import type { Task } from "../../types";
 import TaskCard from "../TaskCard";
@@ -26,60 +27,64 @@ function makeTask(overrides: Partial<Task> = {}): Task {
   };
 }
 
+function renderWithRouter(ui: React.ReactElement) {
+  return render(<MemoryRouter>{ui}</MemoryRouter>);
+}
+
 describe("TaskCard", () => {
   it("renders task title and status", () => {
-    render(<TaskCard task={makeTask()} onRefresh={vi.fn()} />);
+    renderWithRouter(<TaskCard task={makeTask()} onRefresh={vi.fn()} />);
     expect(screen.getByText("Fix login bug")).toBeInTheDocument();
     expect(screen.getByText("backlog")).toBeInTheDocument();
   });
 
   it("renders description when present", () => {
-    render(<TaskCard task={makeTask()} onRefresh={vi.fn()} />);
+    renderWithRouter(<TaskCard task={makeTask()} onRefresh={vi.fn()} />);
     expect(screen.getByText("Users cannot log in")).toBeInTheDocument();
   });
 
   it("does not render description when empty", () => {
-    render(
-      <TaskCard task={makeTask({ description: "" })} onRefresh={vi.fn()} />
+    renderWithRouter(
+      <TaskCard task={makeTask({ description: "" })} onRefresh={vi.fn()} />,
     );
     expect(screen.queryByText("Users cannot log in")).not.toBeInTheDocument();
   });
 
   it("renders Jira link when jira_key is set", () => {
-    render(
+    renderWithRouter(
       <TaskCard
         task={makeTask({
           jira_key: "PROJ-42",
           jira_url: "https://jira.example.com/PROJ-42",
         })}
         onRefresh={vi.fn()}
-      />
+      />,
     );
     const link = screen.getByText("PROJ-42");
     expect(link).toBeInTheDocument();
     expect(link.closest("a")).toHaveAttribute(
       "href",
-      "https://jira.example.com/PROJ-42"
+      "https://jira.example.com/PROJ-42",
     );
   });
 
   it("does not render Jira link when jira_key is null", () => {
-    render(<TaskCard task={makeTask()} onRefresh={vi.fn()} />);
+    renderWithRouter(<TaskCard task={makeTask()} onRefresh={vi.fn()} />);
     expect(screen.queryByText("PROJ-42")).not.toBeInTheDocument();
   });
 
   it("renders PR badge when pr_url is set", () => {
-    render(
+    renderWithRouter(
       <TaskCard
         task={makeTask({ pr_url: "https://github.com/pr/1", pr_number: 1 })}
         onRefresh={vi.fn()}
-      />
+      />,
     );
     expect(screen.getByText("PR #1")).toBeInTheDocument();
   });
 
   it("shows latest run info when present", () => {
-    render(
+    renderWithRouter(
       <TaskCard
         task={makeTask({
           latest_run: {
@@ -92,10 +97,12 @@ describe("TaskCard", () => {
             cost_usd: 0.0045,
             started_at: "2025-01-01T00:00:00Z",
             finished_at: "2025-01-01T00:01:00Z",
+            workspace_path: null,
+            file_tree: null,
           },
         })}
         onRefresh={vi.fn()}
-      />
+      />,
     );
     expect(screen.getByText(/Last run: plan/)).toBeInTheDocument();
     expect(screen.getByText(/\$0\.0045/)).toBeInTheDocument();

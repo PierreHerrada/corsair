@@ -57,6 +57,8 @@ Records each agent execution (plan/work/review) with cost tracking.
 | `cost_usd` | DECIMAL(10,6) | NOT NULL, default 0 | Total cost in USD |
 | `started_at` | TIMESTAMPTZ | NOT NULL, auto | Run start time |
 | `finished_at` | TIMESTAMPTZ | NULLABLE | Run completion time |
+| `workspace_path` | TEXT | NULLABLE | Filesystem path to the cloned workspace |
+| `file_tree` | JSONB | NULLABLE | File tree snapshot after run completes |
 
 ### Indexes
 - Primary key on `id`

@@ -77,6 +77,8 @@ describe("StageControls", () => {
       cost_usd: 0,
       started_at: "2025-01-01T00:00:00Z",
       finished_at: null,
+      workspace_path: null,
+      file_tree: null,
     });
 
     render(
@@ -106,6 +108,8 @@ describe("StageControls", () => {
             cost_usd: 0,
             started_at: "2025-01-01T00:00:00Z",
             finished_at: null,
+            workspace_path: null,
+            file_tree: null,
           },
         })}
         onRefresh={vi.fn()}
@@ -133,6 +137,8 @@ describe("StageControls", () => {
       cost_usd: 0,
       started_at: "2025-01-01T00:00:00Z",
       finished_at: null,
+      workspace_path: null,
+      file_tree: null,
     });
 
     render(
@@ -149,6 +155,8 @@ describe("StageControls", () => {
             cost_usd: 0,
             started_at: "2025-01-01T00:00:00Z",
             finished_at: null,
+            workspace_path: null,
+            file_tree: null,
           },
         })}
         onRefresh={onRefresh}
@@ -178,6 +186,8 @@ describe("StageControls", () => {
             cost_usd: 0,
             started_at: "2025-01-01T00:00:00Z",
             finished_at: null,
+            workspace_path: null,
+            file_tree: null,
           },
         })}
         onRefresh={vi.fn()}

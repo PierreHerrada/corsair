@@ -28,6 +28,19 @@ export async function updateTaskStatus(
   return resp.json();
 }
 
+export async function updateTaskRepo(
+  id: string,
+  repo: string | null
+): Promise<Task> {
+  const resp = await apiFetch(`${BASE}/tasks/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ repo: repo ?? "" }),
+  });
+  if (!resp.ok) throw new Error("Failed to update task repo");
+  return resp.json();
+}
+
 export async function triggerStage(
   id: string,
   stage: "plan" | "work" | "review"

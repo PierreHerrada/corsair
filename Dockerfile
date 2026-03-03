@@ -25,7 +25,7 @@ FROM python:3.12-slim
 
 # Install nginx, supervisord, and Node.js (for Claude Code CLI)
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends nginx supervisor curl && \
+    apt-get install -y --no-install-recommends nginx supervisor curl git && \
     curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && \
     apt-get install -y --no-install-recommends nodejs && \
     npm install -g @anthropic-ai/claude-code && \
@@ -58,8 +58,9 @@ RUN chmod +x /app/entrypoint.sh
 # Remove default nginx config
 RUN rm -f /etc/nginx/sites-enabled/default
 
-# Give corsair user access to the app directory for agent work
-RUN chown -R corsair:corsair /app/backend /home/corsair
+# Create workspaces directory and give corsair user access
+RUN mkdir -p /home/corsair/workspaces && \
+    chown -R corsair:corsair /app/backend /home/corsair
 
 EXPOSE 80 8000
 

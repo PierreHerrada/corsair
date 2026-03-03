@@ -12,6 +12,12 @@ from typing import Optional
 
 from app.agent.cost import INPUT_PRICE_PER_M, OUTPUT_PRICE_PER_M
 from app.agent.prompts import build_plan_prompt, build_review_prompt, build_work_prompt
+from app.agent.workspace import (
+    capture_file_tree,
+    clone_repo,
+    create_workspace,
+    write_claude_md,
+)
 from app.config import settings
 from app.models import AgentLog, AgentRun, LogType, RunStage, RunStatus, Task, TaskStatus
 
@@ -227,11 +233,91 @@ async def run_agent(
     if base_prompt:
         prompt = base_prompt + "\n\n" + prompt
         logger.info("Base prompt prepended (%d chars)", len(base_prompt))
-    cwd = repo_path or os.getcwd()
+
+    # Set up workspace: create → clone → CLAUDE.md → capture file tree
+    workspace_dir: Optional[str] = None
+    if task.repo and not repo_path:
+        try:
+            from app.models.repository import Repository
+
+            repo_record = await Repository.filter(full_name=task.repo).first()
+            branch = repo_record.default_branch if repo_record else "main"
+            token = settings.github_token
+
+            # Step 1: Create workspace
+            log = await save_log(run.id, {"message": "Creating workspace..."})
+            if ws_broadcast:
+                await ws_broadcast(str(run.id), log)
+            ws_path = await create_workspace(run_id_str)
+            workspace_dir = str(ws_path)
+            await AgentRun.filter(id=run.id).update(workspace_path=workspace_dir)
+            logger.info("Workspace created: %s", workspace_dir)
+
+            # Step 2: Clone repository
+            log = await save_log(
+                run.id, {"message": f"Cloning {task.repo} (branch: {branch})..."}
+            )
+            if ws_broadcast:
+                await ws_broadcast(str(run.id), log)
+            await clone_repo(ws_path, task.repo, branch, token)
+            log = await save_log(
+                run.id, {"message": f"Cloned {task.repo} successfully."}
+            )
+            if ws_broadcast:
+                await ws_broadcast(str(run.id), log)
+            logger.info("Cloned %s (branch %s) into %s", task.repo, branch, workspace_dir)
+
+            # Step 3: Write CLAUDE.md
+            if base_prompt:
+                log = await save_log(
+                    run.id, {"message": "Writing CLAUDE.md to workspace..."}
+                )
+                if ws_broadcast:
+                    await ws_broadcast(str(run.id), log)
+                write_claude_md(ws_path, base_prompt)
+                log = await save_log(
+                    run.id,
+                    {"message": f"CLAUDE.md written ({len(base_prompt)} chars)."},
+                )
+                if ws_broadcast:
+                    await ws_broadcast(str(run.id), log)
+
+            # Step 4: Capture initial file tree so frontend can show it during the run
+            initial_tree = capture_file_tree(ws_path)
+            await AgentRun.filter(id=run.id).update(file_tree=initial_tree)
+            log = await save_log(
+                run.id, {"message": f"Workspace ready — {len(initial_tree)} files."}
+            )
+            if ws_broadcast:
+                await ws_broadcast(str(run.id), log)
+            logger.info(
+                "Workspace ready: %s (repo=%s branch=%s files=%d)",
+                workspace_dir, task.repo, branch, len(initial_tree),
+            )
+        except Exception as e:
+            logger.exception("Workspace setup failed for run %s: %s", run.id, e)
+            await AgentRun.filter(id=run.id).update(
+                status=RunStatus.FAILED,
+                finished_at=datetime.now(timezone.utc),
+            )
+            await Task.filter(id=task.id).update(status=TaskStatus.FAILED)
+            error_log = await save_log(
+                run.id, {"message": f"Workspace setup failed: {e}"}, LogType.ERROR,
+            )
+            if ws_broadcast:
+                await ws_broadcast(str(run.id), error_log)
+            return await AgentRun.get(id=run.id)
+
+    cwd = workspace_dir or repo_path or os.getcwd()
     logger.info(
         "Launching Claude CLI — run=%s cwd=%s prompt_length=%d",
         run.id, cwd, len(prompt),
     )
+
+    # Log the Claude CLI launch so users can see the transition from setup to agent
+    log = await save_log(run.id, {"message": "Launching Claude Code agent..."})
+    if ws_broadcast:
+        await ws_broadcast(str(run.id), log)
 
     tokens_in = 0
     tokens_out = 0
@@ -394,6 +480,21 @@ async def run_agent(
         await _notify_run_complete(task, stage, success=False)
     finally:
         _active_processes.pop(run_id_str, None)
+
+        # Capture file tree from workspace after run completes
+        if workspace_dir and os.path.isdir(workspace_dir):
+            try:
+                from pathlib import Path
+
+                file_tree = capture_file_tree(Path(workspace_dir))
+                await AgentRun.filter(id=run.id).update(file_tree=file_tree)
+                logger.info(
+                    "Captured file tree (%d entries) for run %s",
+                    len(file_tree), run.id,
+                )
+            except Exception:
+                logger.exception("Failed to capture file tree for run %s", run.id)
+
         logger.info("=== Agent run cleanup done === run=%s task=%s", run_id_str, task.id)
 
     return await AgentRun.get(id=run.id)

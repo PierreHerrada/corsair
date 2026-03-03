@@ -16,8 +16,9 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1/tasks", tags=["tasks"])
 
 
-class TaskStatusUpdate(BaseModel):
-    status: TaskStatus
+class TaskUpdate(BaseModel):
+    status: Optional[TaskStatus] = None
+    repo: Optional[str] = None
 
 
 async def _task_to_dict(task: Task) -> dict:
@@ -50,6 +51,8 @@ def _run_to_dict(run: AgentRun) -> dict:
         "cost_usd": float(run.cost_usd),
         "started_at": run.started_at.isoformat(),
         "finished_at": run.finished_at.isoformat() if run.finished_at else None,
+        "workspace_path": run.workspace_path,
+        "file_tree": run.file_tree,
     }
 
 
@@ -68,11 +71,17 @@ async def get_task(task_id: str) -> dict:
 
 
 @router.patch("/{task_id}")
-async def update_task(task_id: str, body: TaskStatusUpdate) -> dict:
+async def update_task(task_id: str, body: TaskUpdate) -> dict:
     task = await Task.filter(id=task_id).first()
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
-    await Task.filter(id=task_id).update(status=body.status)
+    updates = {}
+    if body.status is not None:
+        updates["status"] = body.status
+    if body.repo is not None:
+        updates["repo"] = body.repo if body.repo != "" else None
+    if updates:
+        await Task.filter(id=task_id).update(**updates)
     task = await Task.get(id=task_id)
     return await _task_to_dict(task)
 
@@ -179,6 +188,18 @@ async def list_task_runs(task_id: str) -> list[dict]:
         ]
         result.append(run_dict)
     return result
+
+
+@router.get("/{task_id}/runs/{run_id}/files")
+async def get_run_files(task_id: str, run_id: str) -> list[dict]:
+    """Get the file tree for a specific run."""
+    task = await Task.filter(id=task_id).first()
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    run = await AgentRun.filter(id=run_id, task_id=task_id).first()
+    if not run:
+        raise HTTPException(status_code=404, detail="Run not found")
+    return run.file_tree or []
 
 
 @router.post("/{task_id}/plan", status_code=201)

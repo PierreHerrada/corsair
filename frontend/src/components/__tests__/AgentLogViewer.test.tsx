@@ -15,19 +15,19 @@ function makeLog(overrides: Partial<AgentLog> = {}): AgentLog {
 }
 
 describe("AgentLogViewer", () => {
-  it("shows 'Waiting for logs...' when empty", () => {
+  it("shows 'No logs yet...' when empty", () => {
     render(<AgentLogViewer logs={[]} connected={false} />);
-    expect(screen.getByText("Waiting for logs...")).toBeInTheDocument();
+    expect(screen.getByText("No logs yet...")).toBeInTheDocument();
   });
 
-  it("shows Connected status when connected", () => {
+  it("shows Live status when connected", () => {
     render(<AgentLogViewer logs={[]} connected={true} />);
-    expect(screen.getByText("Connected")).toBeInTheDocument();
+    expect(screen.getByText("Live")).toBeInTheDocument();
   });
 
-  it("shows Disconnected status when not connected", () => {
+  it("shows Stored status when not connected", () => {
     render(<AgentLogViewer logs={[]} connected={false} />);
-    expect(screen.getByText("Disconnected")).toBeInTheDocument();
+    expect(screen.getByText("Stored")).toBeInTheDocument();
   });
 
   it("renders log entries with message content", () => {
@@ -40,14 +40,14 @@ describe("AgentLogViewer", () => {
     expect(screen.getByText("Using tool X")).toBeInTheDocument();
   });
 
-  it("renders log type labels", () => {
+  it("renders log type prefixes", () => {
     const logs = [
-      makeLog({ id: "l1", type: "text" }),
+      makeLog({ id: "l1", type: "tool_use", content: { message: "Read file" } }),
       makeLog({ id: "l2", type: "error", content: { message: "Oops" } }),
     ];
     render(<AgentLogViewer logs={logs} connected={true} />);
-    expect(screen.getByText("[text]")).toBeInTheDocument();
-    expect(screen.getByText("[error]")).toBeInTheDocument();
+    expect(screen.getByText("TOOL")).toBeInTheDocument();
+    expect(screen.getByText("ERROR")).toBeInTheDocument();
   });
 
   it("shows JSON for non-message content", () => {
@@ -58,8 +58,8 @@ describe("AgentLogViewer", () => {
     expect(screen.getByText('{"key":"value"}')).toBeInTheDocument();
   });
 
-  it("renders the Agent Logs header", () => {
+  it("renders the Agent Logs header with count", () => {
     render(<AgentLogViewer logs={[]} connected={false} />);
-    expect(screen.getByText("Agent Logs")).toBeInTheDocument();
+    expect(screen.getByText("Agent Logs (0)")).toBeInTheDocument();
   });
 });

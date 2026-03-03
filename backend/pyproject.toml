@@ -17,7 +17,6 @@ testpaths = ["tests"]
 
 [tool.coverage.run]
 source = ["app"]
-omit = ["app/integrations/*/tests/*"]
 
 [tool.coverage.report]
 fail_under = 80

@@ -1,4 +1,5 @@
 import { render, screen } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 import type { Task } from "../../types";
 import TaskBoard from "../TaskBoard";
@@ -26,9 +27,13 @@ function makeTask(overrides: Partial<Task> = {}): Task {
   };
 }
 
+function renderWithRouter(ui: React.ReactElement) {
+  return render(<MemoryRouter>{ui}</MemoryRouter>);
+}
+
 describe("TaskBoard", () => {
   it("renders all 6 columns", () => {
-    render(<TaskBoard tasks={[]} onRefresh={vi.fn()} />);
+    renderWithRouter(<TaskBoard tasks={[]} onRefresh={vi.fn()} />);
     expect(screen.getByText("Backlog")).toBeInTheDocument();
     expect(screen.getByText("Planned")).toBeInTheDocument();
     expect(screen.getByText("Working")).toBeInTheDocument();
@@ -38,7 +43,7 @@ describe("TaskBoard", () => {
   });
 
   it("shows 'No tasks' for empty columns", () => {
-    render(<TaskBoard tasks={[]} onRefresh={vi.fn()} />);
+    renderWithRouter(<TaskBoard tasks={[]} onRefresh={vi.fn()} />);
     const emptyMessages = screen.getAllByText("No tasks");
     expect(emptyMessages).toHaveLength(6);
   });
@@ -49,7 +54,7 @@ describe("TaskBoard", () => {
       makeTask({ id: "2", title: "Done task", status: "done" }),
       makeTask({ id: "3", title: "Working task", status: "working" }),
     ];
-    render(<TaskBoard tasks={tasks} onRefresh={vi.fn()} />);
+    renderWithRouter(<TaskBoard tasks={tasks} onRefresh={vi.fn()} />);
     expect(screen.getByText("Backlog task")).toBeInTheDocument();
     expect(screen.getByText("Done task")).toBeInTheDocument();
     expect(screen.getByText("Working task")).toBeInTheDocument();
@@ -61,8 +66,8 @@ describe("TaskBoard", () => {
       makeTask({ id: "2", status: "backlog" }),
       makeTask({ id: "3", status: "done" }),
     ];
-    render(<TaskBoard tasks={tasks} onRefresh={vi.fn()} />);
-    // Backlog column should show "2", done shows "1", rest show "0"
+    renderWithRouter(<TaskBoard tasks={tasks} onRefresh={vi.fn()} />);
+    // Backlog column should show "2", done shows "1"
     expect(screen.getByText("2")).toBeInTheDocument();
     expect(screen.getByText("1")).toBeInTheDocument();
   });
