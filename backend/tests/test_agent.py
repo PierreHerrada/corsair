@@ -447,9 +447,9 @@ class TestStopRun:
                         run = await run_agent(sample_task, RunStage.PLAN)
 
         assert run.status == RunStatus.FAILED
-        # Task should NOT be set to FAILED
+        # Task should be set to FAILED so it can be re-run
         task = await Task.get(id=sample_task.id)
-        assert task.status == original_status
+        assert task.status == TaskStatus.FAILED
 
         # Verify the "Stopped by user" log was saved
         logs = await AgentLog.filter(run_id=run.id, type=LogType.ERROR).all()

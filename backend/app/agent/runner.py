@@ -527,6 +527,7 @@ async def run_agent(
             )
             if stopped_by_user:
                 _stopped_runs.discard(run_id_str)
+                await Task.filter(id=task.id).update(status=TaskStatus.FAILED)
                 await _emit(
                     run.id, "Stopped by user.", ws_broadcast, LogType.ERROR,
                 )
@@ -563,6 +564,7 @@ async def run_agent(
         )
         if stopped_by_user:
             _stopped_runs.discard(run_id_str)
+            await Task.filter(id=task.id).update(status=TaskStatus.FAILED)
             await _emit(
                 run.id, "Stopped by user.", ws_broadcast, LogType.ERROR,
             )
