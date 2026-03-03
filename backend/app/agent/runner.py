@@ -14,9 +14,15 @@ from app.agent.cost import INPUT_PRICE_PER_M, OUTPUT_PRICE_PER_M
 from app.agent.prompts import build_plan_prompt, build_review_prompt, build_work_prompt
 from app.agent.workspace import (
     capture_file_tree,
-    clone_repo,
+    clone_all_repos,
     create_workspace,
+    read_lessons_md,
+    read_pr_url,
     write_claude_md,
+    write_lessons_md,
+    write_plan_md,
+    write_skill_files,
+    write_subagent_files,
 )
 from app.config import settings
 from app.models import AgentLog, AgentRun, LogType, RunStage, RunStatus, Task, TaskStatus
@@ -92,11 +98,25 @@ async def _get_base_prompt() -> str:
     return ""
 
 
+async def _get_setting_value(key: str) -> str:
+    """Fetch a setting value by key, returning empty string if not set."""
+    from app.models.setting import Setting
+
+    setting = await Setting.filter(key=key).first()
+    if setting and setting.value.strip():
+        return setting.value.strip()
+    return ""
+
+
 def _build_prompt(task: Task, stage: RunStage) -> str:
     if stage == RunStage.PLAN:
-        return build_plan_prompt(task.title, task.description, task.acceptance)
+        return build_plan_prompt(task.title, task.description, task.acceptance, task_repo=task.repo)
     elif stage == RunStage.WORK:
-        return build_work_prompt()
+        return build_work_prompt(
+            task_repo=task.repo,
+            title=task.title,
+            description=task.description,
+        )
     elif stage == RunStage.REVIEW:
         return build_review_prompt(
             task.jira_key or "UNKNOWN",
@@ -293,12 +313,14 @@ def _text_to_adf(text: str) -> dict:
 
 
 async def _notify_run_complete(
-    task: Task, stage: RunStage, success: bool, plan_text: str = ""
+    task: Task, stage: RunStage, success: bool, plan_text: str = "", pr_url: str = ""
 ) -> None:
     """Send Jira comment and Slack thread message when an agent run finishes."""
     status_text = "completed successfully" if success else "failed"
     stage_label = stage.value.capitalize()
     message = f"{stage_label} stage {status_text}."
+    if pr_url and stage == RunStage.REVIEW and success:
+        message = f"{stage_label} stage {status_text}.\nPR: {pr_url}"
 
     from app.integrations.registry import IntegrationRegistry
 
@@ -306,16 +328,17 @@ async def _notify_run_complete(
     try:
         jira = IntegrationRegistry.get("jira")
         if jira is not None and task.jira_key:
-            await jira.add_comment(task.jira_key, message)
-
-            # Plan-specific Jira updates
+            # For successful plan stage, post the plan content as the comment
             if stage == RunStage.PLAN and success and plan_text:
+                await jira.add_comment(task.jira_key, plan_text)
                 await jira.update_status(task.jira_key, "Planned")
                 if settings.jira_plan_custom_field:
                     await jira.update_fields(
                         task.jira_key,
                         {settings.jira_plan_custom_field: _text_to_adf(plan_text)},
                     )
+            else:
+                await jira.add_comment(task.jira_key, message)
     except Exception:
         logger.exception("Failed to post Jira comment for task %s", task.id)
 
@@ -419,63 +442,120 @@ async def run_agent(
         await _emit(run.id, "Checking repository permissions...", ws_broadcast)
         await _emit(run.id, f"Repository {task.repo} is enabled.", ws_broadcast)
 
-    # --- Set up workspace: create → clone → CLAUDE.md → capture file tree ---
+    # --- Set up workspace ---
     workspace_dir: Optional[str] = None
-    if task.repo and not repo_path:
+    lessons_before: Optional[str] = None
+    if not repo_path:
         try:
             from app.models.repository import Repository
 
-            repo_record = await Repository.filter(full_name=task.repo).first()
-            branch = repo_record.default_branch if repo_record else "main"
+            enabled_repo_records = await Repository.filter(enabled=True).all()
             token = settings.github_token
 
-            # Step 1: Create workspace
-            await _emit(run.id, "Creating workspace...", ws_broadcast)
-            ws_path = await create_workspace(run_id_str)
-            workspace_dir = str(ws_path)
-            await AgentRun.filter(id=run.id).update(workspace_path=workspace_dir)
-            await _emit(
-                run.id, f"Workspace created at {workspace_dir}", ws_broadcast,
-            )
-            logger.info("Workspace created: %s", workspace_dir)
-
-            # Step 2: Clone repository
-            await _emit(
-                run.id,
-                f"Cloning {task.repo} (branch: {branch})...",
-                ws_broadcast,
-            )
-            await clone_repo(ws_path, task.repo, branch, token)
-            await _emit(
-                run.id, f"Cloned {task.repo} successfully.", ws_broadcast,
-            )
-            logger.info("Cloned %s (branch %s) into %s", task.repo, branch, workspace_dir)
-
-            # Step 3: Write CLAUDE.md
-            if base_prompt:
+            if enabled_repo_records:
+                # Step 1: Create workspace
+                await _emit(run.id, "Creating workspace...", ws_broadcast)
+                ws_path = await create_workspace(run_id_str)
+                workspace_dir = str(ws_path)
+                await AgentRun.filter(id=run.id).update(workspace_path=workspace_dir)
                 await _emit(
-                    run.id, "Writing CLAUDE.md to workspace...", ws_broadcast,
+                    run.id, f"Workspace created at {workspace_dir}", ws_broadcast,
                 )
-                write_claude_md(ws_path, base_prompt)
+                logger.info("Workspace created: %s", workspace_dir)
+
+                # Step 2: Clone all enabled repos into subfolders
+                repos_to_clone = [
+                    (r.full_name, r.default_branch) for r in enabled_repo_records
+                ]
+                repo_names = [r.full_name for r in enabled_repo_records]
                 await _emit(
                     run.id,
-                    f"CLAUDE.md written ({len(base_prompt)} chars).",
+                    f"Cloning {len(repos_to_clone)} repo(s): {', '.join(repo_names)}...",
                     ws_broadcast,
                 )
+                clone_results = await clone_all_repos(
+                    ws_path, repos_to_clone, token, task_repo=task.repo,
+                )
+                cloned_count = sum(1 for p in clone_results.values() if p is not None)
+                skipped = [fn for fn, p in clone_results.items() if p is None]
+                await _emit(
+                    run.id,
+                    f"Cloned {cloned_count}/{len(repos_to_clone)} repo(s) successfully."
+                    + (f" Skipped: {', '.join(skipped)}" if skipped else ""),
+                    ws_broadcast,
+                )
+                logger.info(
+                    "Cloned %d/%d repos into %s (skipped: %s)",
+                    cloned_count, len(repos_to_clone), workspace_dir, skipped,
+                )
 
-            # Step 4: Capture initial file tree so frontend can show it during the run
-            await _emit(run.id, "Scanning workspace file tree...", ws_broadcast)
-            initial_tree = capture_file_tree(ws_path)
-            await AgentRun.filter(id=run.id).update(file_tree=initial_tree)
-            await _emit(
-                run.id,
-                f"Workspace ready — {len(initial_tree)} files.",
-                ws_broadcast,
-            )
-            logger.info(
-                "Workspace ready: %s (repo=%s branch=%s files=%d)",
-                workspace_dir, task.repo, branch, len(initial_tree),
-            )
+                # Step 3: Write CLAUDE.md
+                if base_prompt:
+                    await _emit(
+                        run.id, "Writing CLAUDE.md to workspace...", ws_broadcast,
+                    )
+                    write_claude_md(ws_path, base_prompt)
+                    await _emit(
+                        run.id,
+                        f"CLAUDE.md written ({len(base_prompt)} chars):\n{base_prompt}",
+                        ws_broadcast,
+                    )
+
+                # Step 3b: Write skill files
+                skills_json = await _get_setting_value("skills")
+                if skills_json:
+                    n = write_skill_files(ws_path, skills_json)
+                    if n:
+                        await _emit(
+                            run.id,
+                            f"Wrote {n} skill file(s):\n{skills_json}",
+                            ws_broadcast,
+                        )
+
+                # Step 3c: Write subagent files
+                subagents_json = await _get_setting_value("subagents")
+                if subagents_json:
+                    n = write_subagent_files(ws_path, subagents_json)
+                    if n:
+                        await _emit(
+                            run.id,
+                            f"Wrote {n} subagent file(s):\n{subagents_json}",
+                            ws_broadcast,
+                        )
+
+                # Step 3d: Write LESSONS.md
+                lessons_content = await _get_setting_value("lessons")
+                if lessons_content:
+                    write_lessons_md(ws_path, lessons_content)
+                    lessons_before = lessons_content
+                    await _emit(
+                        run.id,
+                        f"LESSONS.md written ({len(lessons_content)} chars):\n{lessons_content}",
+                        ws_broadcast,
+                    )
+
+                # Step 3e: Write PLAN.md from task.plan (for work/review stages)
+                if task.plan and stage in (RunStage.WORK, RunStage.REVIEW):
+                    write_plan_md(ws_path, task.plan)
+                    await _emit(
+                        run.id,
+                        f"PLAN.md written ({len(task.plan)} chars):\n{task.plan}",
+                        ws_broadcast,
+                    )
+
+                # Step 4: Capture initial file tree so frontend can show it during the run
+                await _emit(run.id, "Scanning workspace file tree...", ws_broadcast)
+                initial_tree = capture_file_tree(ws_path)
+                await AgentRun.filter(id=run.id).update(file_tree=initial_tree)
+                await _emit(
+                    run.id,
+                    f"Workspace ready — {len(initial_tree)} files.",
+                    ws_broadcast,
+                )
+                logger.info(
+                    "Workspace ready: %s (repos=%d files=%d)",
+                    workspace_dir, cloned_count, len(initial_tree),
+                )
         except Exception as e:
             logger.exception("Workspace setup failed for run %s: %s", run.id, e)
             await AgentRun.filter(id=run.id).update(
@@ -648,6 +728,28 @@ async def run_agent(
             new_status = _STAGE_TO_TASK_STATUS.get(stage)
             if new_status:
                 await Task.filter(id=task.id).update(status=new_status)
+            if stage == RunStage.PLAN and last_assistant_text:
+                await Task.filter(id=task.id).update(plan=last_assistant_text)
+
+            # Read PR URL from workspace (written by agent during review stage)
+            detected_pr_url = ""
+            if stage == RunStage.REVIEW and workspace_dir and os.path.isdir(workspace_dir):
+                try:
+                    from pathlib import Path as _PPath
+
+                    detected_pr_url = read_pr_url(_PPath(workspace_dir)) or ""
+                    if detected_pr_url:
+                        await Task.filter(id=task.id).update(
+                            pr_url=detected_pr_url,
+                        )
+                        await _emit(
+                            run.id,
+                            f"PR created: {detected_pr_url}",
+                            ws_broadcast,
+                        )
+                        logger.info("PR URL detected: %s for task %s", detected_pr_url, task.id)
+                except Exception:
+                    logger.exception("Failed to read PR URL for run %s", run.id)
 
             # --- Visible log: success summary ---
             await _emit(
@@ -664,7 +766,10 @@ async def run_agent(
 
             # Notify integrations
             await _emit(run.id, "Notifying integrations...", ws_broadcast)
-            await _notify_run_complete(task, stage, success=True, plan_text=last_assistant_text)
+            await _notify_run_complete(
+                task, stage, success=True,
+                plan_text=last_assistant_text, pr_url=detected_pr_url,
+            )
             await _emit(run.id, "Notifications sent.", ws_broadcast)
         else:
             stopped_by_user = run_id_str in _stopped_runs
@@ -757,6 +862,43 @@ async def run_agent(
                 )
             except Exception:
                 logger.exception("Failed to capture file tree for run %s", run.id)
+
+        # Post-run: detect LESSONS.md changes made by the agent
+        if workspace_dir and os.path.isdir(workspace_dir):
+            try:
+                from pathlib import Path as _Path
+
+                lessons_after = read_lessons_md(_Path(workspace_dir))
+                if lessons_after is not None and lessons_after != (lessons_before or ""):
+                    from app.models.setting import Setting as _Setting
+                    from app.models.setting_history import SettingHistory
+
+                    setting = await _Setting.filter(key="lessons").first()
+                    old_val = setting.value if setting else ""
+                    if setting:
+                        setting.value = lessons_after
+                        await setting.save()
+                    else:
+                        await _Setting.create(
+                            id=uuid.uuid4(),
+                            key="lessons",
+                            value=lessons_after,
+                        )
+                    await SettingHistory.create(
+                        id=uuid.uuid4(),
+                        setting_key="lessons",
+                        old_value=old_val,
+                        new_value=lessons_after,
+                        change_source="agent",
+                    )
+                    await _emit(
+                        run.id,
+                        "Agent updated LESSONS.md — synced to settings.",
+                        ws_broadcast,
+                    )
+                    logger.info("LESSONS.md updated by agent for run %s", run.id)
+            except Exception:
+                logger.exception("Failed to sync LESSONS.md for run %s", run.id)
 
         await _emit(run.id, "Run complete. Cleaning up.", ws_broadcast)
         logger.info("=== Agent run cleanup done === run=%s task=%s", run_id_str, task.id)

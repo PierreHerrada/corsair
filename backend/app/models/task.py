@@ -30,6 +30,8 @@ class Task(Model):
     pr_url = fields.TextField(null=True)
     pr_number = fields.IntField(null=True)
     repo = fields.TextField(null=True)
+    plan = fields.TextField(default="")
+    analysis = fields.TextField(default="")
     created_at = fields.DatetimeField(auto_now_add=True)
     updated_at = fields.DatetimeField(auto_now=True)
     deleted_at = fields.DatetimeField(null=True, default=None)

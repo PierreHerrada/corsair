@@ -1,6 +1,9 @@
+import { useEffect, useState, useCallback } from "react";
+import ActiveAgentRow from "../components/ActiveAgentRow";
 import CostWidget from "../components/CostWidget";
+import { fetchTasks } from "../api/tasks";
 import { useDashboard } from "../hooks/useDashboard";
-import type { TaskStatus } from "../types";
+import type { Task, TaskStatus } from "../types";
 
 const STATUS_COLORS: Record<TaskStatus, string> = {
   backlog: "text-foam",
@@ -12,9 +15,34 @@ const STATUS_COLORS: Record<TaskStatus, string> = {
 };
 
 export default function Dashboard() {
-  const { stats, costs, loading, error } = useDashboard();
+  const { stats, costs, loading: statsLoading, error } = useDashboard();
+  const [tasks, setTasks] = useState<Task[]>([]);
 
-  if (loading) {
+  const refreshTasks = useCallback(async () => {
+    try {
+      const data = await fetchTasks();
+      setTasks(data);
+    } catch {
+      // task fetch errors are non-fatal; metrics still display
+    }
+  }, []);
+
+  useEffect(() => {
+    refreshTasks();
+  }, [refreshTasks]);
+
+  const activeAgents = tasks.filter(
+    (t) => t.latest_run?.status === "running",
+  );
+
+  // Auto-refresh every 5s while agents are running
+  useEffect(() => {
+    if (activeAgents.length === 0) return;
+    const interval = setInterval(refreshTasks, 5000);
+    return () => clearInterval(interval);
+  }, [activeAgents.length, refreshTasks]);
+
+  if (statsLoading) {
     return (
       <div className="flex items-center justify-center h-64">
         <span className="text-mist">Loading dashboard...</span>
@@ -60,6 +88,32 @@ export default function Dashboard() {
           </div>
         </div>
       </div>
+
+      {activeAgents.length > 0 && (
+        <div className="bg-abyss border border-foam/8 rounded-lg p-4 mb-8">
+          <h2 className="text-sm font-medium text-mist mb-3">Active Agents</h2>
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-mist text-xs uppercase">
+                <th className="text-left py-1">Task</th>
+                <th className="text-center py-1">Stage</th>
+                <th className="text-right py-1">Elapsed</th>
+                <th className="text-right py-1">Cost</th>
+                <th className="text-right py-1"></th>
+              </tr>
+            </thead>
+            <tbody>
+              {activeAgents.map((t) => (
+                <ActiveAgentRow
+                  key={t.id}
+                  task={t}
+                  onStopped={refreshTasks}
+                />
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
 
       <CostWidget costs={costs} costByStage={stats.cost_by_stage} />
     </div>

@@ -12,6 +12,14 @@ from app.models.task import Task, TaskStatus
 
 logger = logging.getLogger(__name__)
 
+
+async def _analyze_task_safe(task) -> None:
+    try:
+        from app.agent.analysis import analyze_task
+        await analyze_task(task)
+    except Exception:
+        logger.exception("Failed to analyze task %s", task.id)
+
 _sync_task: Optional[asyncio.Task] = None
 
 _STATUS_MAP: dict[str, TaskStatus] = {
@@ -162,6 +170,10 @@ async def import_jira_issue(issue: dict) -> Optional[Task]:
         slack_thread_ts="",
         slack_user_id="",
     )
+
+    # Trigger analysis in background
+    asyncio.create_task(_analyze_task_safe(task))
+
     return task
 
 

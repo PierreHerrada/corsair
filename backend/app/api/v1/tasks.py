@@ -11,6 +11,7 @@ from datetime import datetime, timezone
 
 from app.agent.runner import run_agent, stop_run
 from app.models import AgentLog, AgentRun, RunStage, RunStatus, Task, TaskStatus
+from app.models.setting import Setting
 from app.websocket.manager import ws_manager
 
 logger = logging.getLogger(__name__)
@@ -37,6 +38,8 @@ async def _task_to_dict(task: Task) -> dict:
         "pr_url": task.pr_url,
         "pr_number": task.pr_number,
         "repo": task.repo,
+        "plan": task.plan,
+        "analysis": task.analysis,
         "created_at": task.created_at.isoformat(),
         "latest_run": _run_to_dict(latest_run) if latest_run else None,
     }
@@ -97,6 +100,20 @@ async def _trigger_stage(task_id: str, stage: RunStage, background_tasks: Backgr
     active_run = await AgentRun.filter(task_id=task_id, status=RunStatus.RUNNING).first()
     if active_run:
         raise HTTPException(status_code=409, detail="A run is already active for this task")
+
+    # Enforce global max active agents limit
+    setting = await Setting.filter(key="max_active_agents").first()
+    try:
+        max_active = int(setting.value) if setting and setting.value else 0
+    except (ValueError, TypeError):
+        max_active = 0
+    if max_active > 0:
+        running_count = await AgentRun.filter(status=RunStatus.RUNNING).count()
+        if running_count >= max_active:
+            raise HTTPException(
+                status_code=429,
+                detail=f"Max active agents limit reached ({max_active})",
+            )
 
     run = await AgentRun.create(
         task=task,
@@ -223,3 +240,22 @@ async def trigger_work(task_id: str, background_tasks: BackgroundTasks) -> dict:
 @router.post("/{task_id}/review", status_code=201)
 async def trigger_review(task_id: str, background_tasks: BackgroundTasks) -> dict:
     return await _trigger_stage(task_id, RunStage.REVIEW, background_tasks)
+
+
+@router.post("/{task_id}/analyze", status_code=200)
+async def trigger_analysis(task_id: str, background_tasks: BackgroundTasks) -> dict:
+    """Manually trigger analysis for a task."""
+    task = await Task.filter(id=task_id).first()
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    background_tasks.add_task(_run_analysis, task)
+    return {"status": "analyzing"}
+
+
+async def _run_analysis(task: Task) -> None:
+    from app.agent.analysis import analyze_task
+
+    try:
+        await analyze_task(task)
+    except Exception:
+        logger.exception("Background analysis failed for task %s", task.id)

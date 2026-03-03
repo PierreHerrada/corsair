@@ -19,7 +19,7 @@ interface TaskCardProps {
 
 export default function TaskCard({ task, onRefresh }: TaskCardProps) {
   return (
-    <div className="bg-abyss border border-foam/8 rounded-lg p-4 mb-3">
+    <div className="bg-abyss border border-foam/8 rounded-lg p-4 mb-3 max-w-sm">
       <div className="flex items-start justify-between mb-2">
         <Link
           to={`/tasks/${task.id}`}
@@ -43,6 +43,10 @@ export default function TaskCard({ task, onRefresh }: TaskCardProps) {
         >
           {task.jira_key}
         </a>
+      )}
+
+      {task.analysis && (
+        <span className="text-[10px] text-sky/60 ml-1">analyzed</span>
       )}
 
       {task.description && (

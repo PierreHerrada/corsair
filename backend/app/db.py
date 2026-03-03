@@ -15,6 +15,7 @@ TORTOISE_ORM = {
                 "app.models.datadog_analysis",
                 "app.models.internal_log",
                 "app.models.setting",
+                "app.models.setting_history",
                 "app.models.repository",
             ],
             "default_connection": "default",

@@ -21,6 +21,7 @@ export interface Task {
   pr_url: string | null;
   pr_number: number | null;
   repo: string | null;
+  analysis: string;
   created_at: string;
   latest_run: AgentRun | null;
 }
@@ -167,4 +168,30 @@ export interface SyncResult {
   created: number;
   updated: number;
   total: number;
+}
+
+export interface SkillItem {
+  name: string;
+  content: string;
+}
+
+export interface SubagentItem {
+  name: string;
+  content: string;
+}
+
+export interface SettingHistoryEntry {
+  id: string;
+  setting_key: string;
+  old_value: string;
+  new_value: string;
+  change_source: "user" | "agent";
+  created_at: string;
+}
+
+export interface SettingHistoryResponse {
+  total: number;
+  offset: number;
+  limit: number;
+  entries: SettingHistoryEntry[];
 }

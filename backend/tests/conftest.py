@@ -26,6 +26,7 @@ MODELS = [
     "app.models.conversation",
     "app.models.chat_message",
     "app.models.setting",
+    "app.models.setting_history",
     "app.models.repository",
 ]
 

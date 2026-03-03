@@ -1,12 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
 import { useParams, Link } from "react-router-dom";
-import { fetchTask, fetchTaskRuns, updateTaskRepo, type RunWithLogs } from "../api/tasks";
-import { fetchRepositories } from "../api/repositories";
+import { fetchTask, fetchTaskRuns, updateTaskStatus, type RunWithLogs } from "../api/tasks";
 import { useWebSocket } from "../hooks/useWebSocket";
 import AgentLogViewer from "../components/AgentLogViewer";
 import FileTreeViewer from "../components/FileTreeViewer";
 import StageControls from "../components/StageControls";
-import type { Task, AgentLog, Repository } from "../types";
+import type { Task, TaskStatus, AgentLog } from "../types";
 
 const STATUS_STYLES: Record<string, string> = {
   backlog: "bg-foam/20 text-foam",
@@ -29,8 +28,6 @@ export default function TaskDetail() {
   const [runs, setRuns] = useState<RunWithLogs[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
-  const [repos, setRepos] = useState<Repository[]>([]);
-
   // Find the active running run for live WebSocket streaming
   const activeRunId = runs.find((r) => r.status === "running")?.id ?? null;
   const liveRunId = selectedRunId ?? activeRunId;
@@ -55,9 +52,6 @@ export default function TaskDetail() {
 
   useEffect(() => {
     refresh();
-    fetchRepositories()
-      .then((r) => setRepos(r.filter((repo) => repo.enabled)))
-      .catch(() => {});
   }, [refresh]);
 
   // Auto-refresh while a run is active
@@ -66,16 +60,6 @@ export default function TaskDetail() {
     const interval = setInterval(refresh, 5000);
     return () => clearInterval(interval);
   }, [activeRunId, refresh]);
-
-  const handleRepoChange = async (repo: string) => {
-    if (!taskId) return;
-    try {
-      const updated = await updateTaskRepo(taskId, repo || null);
-      setTask(updated);
-    } catch {
-      // ignore
-    }
-  };
 
   if (loading && !task) {
     return (
@@ -121,9 +105,25 @@ export default function TaskDetail() {
           <div>
             <h1 className="text-xl font-semibold text-white mb-2">{task.title}</h1>
             <div className="flex items-center gap-3">
-              <span className={`text-xs px-2 py-0.5 rounded-full ${STATUS_STYLES[task.status]}`}>
-                {task.status}
-              </span>
+              <select
+                value={task.status}
+                onChange={async (e) => {
+                  const newStatus = e.target.value as TaskStatus;
+                  try {
+                    const updated = await updateTaskStatus(task.id, newStatus);
+                    setTask(updated);
+                  } catch {
+                    // revert visual on failure
+                    e.target.value = task.status;
+                  }
+                }}
+                className={`text-xs px-2 py-0.5 rounded-full border-0 cursor-pointer appearance-none bg-transparent ${STATUS_STYLES[task.status]}`}
+                style={{ paddingRight: "1.25rem", backgroundImage: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%239ca3af'/%3E%3C/svg%3E\")", backgroundRepeat: "no-repeat", backgroundPosition: "right 0.35rem center" }}
+              >
+                {(["backlog", "planned", "working", "reviewing", "done", "failed"] as TaskStatus[]).map((s) => (
+                  <option key={s} value={s}>{s}</option>
+                ))}
+              </select>
               {task.jira_key && (
                 <a
                   href={task.jira_url || "#"}
@@ -149,28 +149,6 @@ export default function TaskDetail() {
           <StageControls task={task} onRefresh={refresh} />
         </div>
 
-        {/* Repo selector */}
-        {repos.length > 0 && (
-          <div className="mb-3">
-            <h3 className="text-xs text-mist/70 uppercase tracking-wide mb-1">Repository</h3>
-            <select
-              value={task.repo || ""}
-              onChange={(e) => handleRepoChange(e.target.value)}
-              className="text-sm bg-navy border border-foam/8 rounded px-3 py-1.5 text-mist focus:outline-none focus:border-sky/50"
-            >
-              <option value="">No repository</option>
-              {repos.map((repo) => (
-                <option key={repo.id} value={repo.full_name}>
-                  {repo.full_name}
-                </option>
-              ))}
-            </select>
-            {task.repo && (
-              <span className="ml-2 text-xs text-mist/50">{task.repo}</span>
-            )}
-          </div>
-        )}
-
         {task.description && (
           <div className="mb-3">
             <h3 className="text-xs text-mist/70 uppercase tracking-wide mb-1">Description</h3>
@@ -182,6 +160,13 @@ export default function TaskDetail() {
           <div>
             <h3 className="text-xs text-mist/70 uppercase tracking-wide mb-1">Acceptance Criteria</h3>
             <p className="text-sm text-mist whitespace-pre-wrap">{task.acceptance}</p>
+          </div>
+        )}
+
+        {task.analysis && (
+          <div className="mt-3">
+            <h3 className="text-xs text-mist/70 uppercase tracking-wide mb-1">Analysis</h3>
+            <p className="text-sm text-mist whitespace-pre-wrap">{task.analysis}</p>
           </div>
         )}
       </div>

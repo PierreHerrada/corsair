@@ -22,6 +22,8 @@ Tracks each engineering task from Slack through completion.
 | `pr_url` | TEXT | NULLABLE | GitHub PR URL (set after Review stage) |
 | `pr_number` | INT | NULLABLE | GitHub PR number |
 | `repo` | TEXT | NULLABLE | GitHub repository (e.g., org/repo-name) |
+| `plan` | TEXT | NOT NULL, default '' | Plan text from the PLAN stage |
+| `analysis` | TEXT | NOT NULL, default '' | Auto-generated task analysis |
 | `created_at` | TIMESTAMPTZ | NOT NULL, auto | Record creation time |
 | `updated_at` | TIMESTAMPTZ | NOT NULL, auto-update | Last modification time |
 
@@ -229,6 +231,26 @@ Stores GitHub repositories and their enabled/disabled status for agent gating.
 
 ---
 
+## setting_history
+
+Tracks changes to settings over time, with source attribution (user or agent).
+
+| Field | Type | Constraints | Description |
+|---|---|---|---|
+| `id` | UUID | PK, auto-generated | Unique history entry identifier |
+| `setting_key` | VARCHAR(255) | NOT NULL | Setting key that was changed |
+| `old_value` | TEXT | NOT NULL, default '' | Value before the change |
+| `new_value` | TEXT | NOT NULL, default '' | Value after the change |
+| `change_source` | VARCHAR(50) | NOT NULL, default 'user' | Who made the change: `user` or `agent` |
+| `created_at` | TIMESTAMPTZ | NOT NULL, auto | When the change occurred |
+
+### Indexes
+- Primary key on `id`
+- Index on `setting_key` (for filtering by setting)
+- Index on `created_at` (for chronological ordering)
+
+---
+
 ## settings
 
 Stores application-level configuration as key-value pairs.
@@ -236,7 +258,7 @@ Stores application-level configuration as key-value pairs.
 | Field | Type | Constraints | Description |
 |---|---|---|---|
 | `id` | UUID | PK, auto-generated | Unique setting identifier |
-| `key` | TEXT | NOT NULL, UNIQUE | Setting key (e.g., `base_prompt`) |
+| `key` | TEXT | NOT NULL, UNIQUE | Setting key (e.g., `base_prompt`, `max_active_agents`) |
 | `value` | TEXT | NOT NULL, default '' | Setting value |
 | `updated_at` | TIMESTAMPTZ | NOT NULL, auto-update | Last modification time |
 
@@ -264,6 +286,7 @@ TORTOISE_ORM = {
                 "app.models.datadog_analysis",
                 "app.models.internal_log",
                 "app.models.setting",
+                "app.models.setting_history",
                 "app.models.repository",
                 "aerich.models",
             ],

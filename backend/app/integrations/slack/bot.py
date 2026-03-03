@@ -14,6 +14,14 @@ from app.integrations.base import BaseIntegration
 logger = logging.getLogger(__name__)
 
 
+async def _analyze_task_safe(task) -> None:
+    try:
+        from app.agent.analysis import analyze_task
+        await analyze_task(task)
+    except Exception:
+        logger.exception("Failed to analyze task %s", task.id)
+
+
 class SlackIntegration(BaseIntegration):
     name = "slack"
     description = "Slack bot for task creation and status updates"
@@ -154,6 +162,9 @@ class SlackIntegration(BaseIntegration):
                 thread_ts=slack_ts,
             )
             logger.info("Slack bot: task %s created — '%s'", task.id, title)
+
+            # Trigger analysis in background
+            asyncio.create_task(_analyze_task_safe(task))
 
         @bolt_app.event("message")
         async def handle_message(event: dict, say: object) -> None:

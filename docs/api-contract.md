@@ -59,6 +59,8 @@ Returns all tasks ordered by `created_at` descending.
     "pr_url": "string|null",
     "pr_number": 0,
     "repo": "string|null",
+    "plan": "string",
+    "analysis": "string",
     "created_at": "ISO 8601",
     "latest_run": null
   }
@@ -83,6 +85,8 @@ Returns a single task with its latest agent run and recent logs.
   "pr_url": "string|null",
   "pr_number": 0,
   "repo": "string|null",
+  "plan": "string",
+  "analysis": "string",
   "created_at": "ISO 8601",
   "latest_run": {
     "id": "uuid",
@@ -133,6 +137,19 @@ Stop a running agent for a task. Terminates the subprocess.
 **Response:** `200 OK` — The active run object (same shape as AgentRun)
 
 **Error:** `404 Not Found` (task not found), `409 Conflict` (no active run)
+
+#### `POST /api/v1/tasks/{id}/analyze`
+
+Manually trigger an analysis for a task. Runs in the background and updates the task's `analysis` field.
+
+**Response:** `200 OK`
+```json
+{"status": "analyzing"}
+```
+
+**Error:** `404 Not Found`
+
+---
 
 #### `GET /api/v1/tasks/{id}/runs`
 
@@ -210,15 +227,15 @@ Trigger the Plan stage for a task. Creates an AgentRun and starts Claude Code su
 }
 ```
 
-**Error:** `404 Not Found`, `409 Conflict` (if a run is already active)
+**Error:** `404 Not Found`, `409 Conflict` (if a run is already active), `429 Too Many Requests` (if `max_active_agents` limit reached)
 
 #### `POST /api/v1/tasks/{id}/work`
 
-Trigger the Work stage. Same response shape as Plan.
+Trigger the Work stage. Same response shape and errors as Plan.
 
 #### `POST /api/v1/tasks/{id}/review`
 
-Trigger the Review stage. Same response shape as Plan.
+Trigger the Review stage. Same response shape and errors as Plan.
 
 ---
 
@@ -590,7 +607,7 @@ Returns the value of a single setting. Returns empty value if the setting has no
 
 #### `PUT /api/v1/settings/{key}`
 
-Create or update a setting.
+Create or update a setting. When `key` is `"lessons"`, a `setting_history` entry is created with `change_source="user"` if the value changed.
 
 **Request Body:**
 ```json
@@ -603,6 +620,35 @@ Create or update a setting.
   "key": "string",
   "value": "string",
   "updated_at": "ISO 8601"
+}
+```
+
+**Known setting keys:** `base_prompt`, `skills`, `subagents`, `lessons`, `max_active_agents`
+
+#### `GET /api/v1/settings/{key}/history`
+
+Returns paginated change history for a setting key.
+
+**Query Parameters:**
+- `limit` (int, default 50, max 100) — Number of entries to return
+- `offset` (int, default 0) — Pagination offset
+
+**Response:** `200 OK`
+```json
+{
+  "total": 5,
+  "offset": 0,
+  "limit": 50,
+  "entries": [
+    {
+      "id": "uuid",
+      "setting_key": "lessons",
+      "old_value": "string",
+      "new_value": "string",
+      "change_source": "user|agent",
+      "created_at": "ISO 8601"
+    }
+  ]
 }
 ```
 
@@ -657,6 +703,8 @@ interface Task {
   pr_url: string | null;
   pr_number: number | null;
   repo: string | null;
+  plan: string;
+  analysis: string;
   created_at: string;
   latest_run: AgentRun | null;
 }
@@ -803,5 +851,31 @@ interface SyncResult {
   created: number;
   updated: number;
   total: number;
+}
+
+interface SkillItem {
+  name: string;
+  content: string;
+}
+
+interface SubagentItem {
+  name: string;
+  content: string;
+}
+
+interface SettingHistoryEntry {
+  id: string;
+  setting_key: string;
+  old_value: string;
+  new_value: string;
+  change_source: "user" | "agent";
+  created_at: string;
+}
+
+interface SettingHistoryResponse {
+  total: number;
+  offset: number;
+  limit: number;
+  entries: SettingHistoryEntry[];
 }
 ```

@@ -37,6 +37,8 @@ class TestTask:
         )
         assert task.description == ""
         assert task.acceptance == ""
+        assert task.plan == ""
+        assert task.analysis == ""
         assert task.status == TaskStatus.BACKLOG
 
     async def test_task_status_enum(self):

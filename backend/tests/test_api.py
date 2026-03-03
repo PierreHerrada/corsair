@@ -8,7 +8,8 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 
 from app.main import create_app
-from app.models import AgentRun, ChatMessage, Repository
+from app.models import AgentRun, ChatMessage, Repository, RunStage, RunStatus, Task, TaskStatus
+from app.models.setting import Setting
 
 
 @pytest.fixture
@@ -49,6 +50,8 @@ class TestTasksEndpoints:
         assert resp.status_code == 200
         data = resp.json()
         assert data["title"] == "Test task"
+        assert data["plan"] == ""
+        assert data["analysis"] == ""
         assert data["latest_run"] is None
 
     async def test_get_task_not_found(self, client, auth_headers):
@@ -143,6 +146,57 @@ class TestTasksEndpoints:
             assert data["id"] == str(sample_run.id)
             assert data["status"] == "running"
 
+    async def test_trigger_plan_429_when_at_limit(self, client, auth_headers, sample_task):
+        """Should return 429 when max_active_agents limit is reached."""
+        await Setting.create(key="max_active_agents", value="1")
+        # Create a running run for a *different* task so the per-task 409 check passes
+        other_task = await Task.create(
+            id=uuid.uuid4(),
+            title="Other task",
+            status=TaskStatus.BACKLOG,
+            slack_channel="C1",
+            slack_thread_ts="1.1",
+            slack_user_id="U1",
+        )
+        await AgentRun.create(
+            id=uuid.uuid4(),
+            task=other_task,
+            stage=RunStage.PLAN,
+            status=RunStatus.RUNNING,
+        )
+        with patch("app.api.v1.tasks._run_agent_background", new_callable=AsyncMock):
+            resp = await client.post(
+                f"/api/v1/tasks/{sample_task.id}/plan", headers=auth_headers
+            )
+            assert resp.status_code == 429
+            assert "limit reached" in resp.json()["detail"]
+
+    async def test_trigger_plan_under_limit(self, client, auth_headers, sample_task):
+        """Should succeed when under the max_active_agents limit."""
+        await Setting.create(key="max_active_agents", value="2")
+        with patch("app.api.v1.tasks._run_agent_background", new_callable=AsyncMock):
+            resp = await client.post(
+                f"/api/v1/tasks/{sample_task.id}/plan", headers=auth_headers
+            )
+            assert resp.status_code == 201
+
+    async def test_trigger_plan_unlimited_when_zero(self, client, auth_headers, sample_task):
+        """Setting max_active_agents to 0 means unlimited."""
+        await Setting.create(key="max_active_agents", value="0")
+        with patch("app.api.v1.tasks._run_agent_background", new_callable=AsyncMock):
+            resp = await client.post(
+                f"/api/v1/tasks/{sample_task.id}/plan", headers=auth_headers
+            )
+            assert resp.status_code == 201
+
+    async def test_trigger_plan_unlimited_when_unset(self, client, auth_headers, sample_task):
+        """No max_active_agents setting means unlimited."""
+        with patch("app.api.v1.tasks._run_agent_background", new_callable=AsyncMock):
+            resp = await client.post(
+                f"/api/v1/tasks/{sample_task.id}/plan", headers=auth_headers
+            )
+            assert resp.status_code == 201
+
     async def test_stop_task_process_not_in_registry(self, client, auth_headers, sample_task, sample_run):
         """Active run in DB but process not in registry (e.g. container restart) — should mark as failed."""
         from app.models import RunStatus, TaskStatus, Task
@@ -158,6 +212,27 @@ class TestTasksEndpoints:
         assert run.status == RunStatus.FAILED
         task = await Task.get(id=sample_task.id)
         assert task.status == TaskStatus.FAILED
+
+    async def test_trigger_analysis(self, client, auth_headers, sample_task):
+        with patch("app.api.v1.tasks._run_analysis", new_callable=AsyncMock):
+            resp = await client.post(
+                f"/api/v1/tasks/{sample_task.id}/analyze", headers=auth_headers
+            )
+            assert resp.status_code == 200
+            assert resp.json() == {"status": "analyzing"}
+
+    async def test_trigger_analysis_not_found(self, client, auth_headers):
+        fake_id = str(uuid.uuid4())
+        resp = await client.post(
+            f"/api/v1/tasks/{fake_id}/analyze", headers=auth_headers
+        )
+        assert resp.status_code == 404
+
+    async def test_analysis_in_task_response(self, client, auth_headers, sample_task):
+        await Task.filter(id=sample_task.id).update(analysis="Test analysis content")
+        resp = await client.get(f"/api/v1/tasks/{sample_task.id}", headers=auth_headers)
+        assert resp.status_code == 200
+        assert resp.json()["analysis"] == "Test analysis content"
 
 
 class TestDashboardEndpoints:
@@ -461,6 +536,102 @@ class TestSettingsEndpoints:
     async def test_settings_require_auth(self, client):
         resp = await client.get("/api/v1/settings/base_prompt")
         assert resp.status_code in (401, 403)
+
+    async def test_put_lessons_creates_history(self, client, auth_headers):
+        """PUT lessons should create a setting_history entry."""
+        resp = await client.put(
+            "/api/v1/settings/lessons",
+            json={"value": "Lesson 1: always test."},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 200
+
+        from app.models.setting_history import SettingHistory
+
+        entries = await SettingHistory.filter(setting_key="lessons").all()
+        assert len(entries) == 1
+        assert entries[0].old_value == ""
+        assert entries[0].new_value == "Lesson 1: always test."
+        assert entries[0].change_source == "user"
+
+    async def test_put_lessons_no_history_when_unchanged(self, client, auth_headers):
+        """PUT lessons with same value should not create history."""
+        await client.put(
+            "/api/v1/settings/lessons",
+            json={"value": "same"},
+            headers=auth_headers,
+        )
+        await client.put(
+            "/api/v1/settings/lessons",
+            json={"value": "same"},
+            headers=auth_headers,
+        )
+        from app.models.setting_history import SettingHistory
+
+        entries = await SettingHistory.filter(setting_key="lessons").all()
+        # Only first create (from "" to "same"), not second (same to same)
+        assert len(entries) == 1
+
+    async def test_put_non_lessons_no_history(self, client, auth_headers):
+        """PUT for non-lessons keys should not create history."""
+        await client.put(
+            "/api/v1/settings/base_prompt",
+            json={"value": "some prompt"},
+            headers=auth_headers,
+        )
+        from app.models.setting_history import SettingHistory
+
+        entries = await SettingHistory.all()
+        assert len(entries) == 0
+
+    async def test_get_setting_history_empty(self, client, auth_headers):
+        resp = await client.get("/api/v1/settings/lessons/history", headers=auth_headers)
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["total"] == 0
+        assert data["entries"] == []
+        assert data["offset"] == 0
+        assert data["limit"] == 50
+
+    async def test_get_setting_history_with_entries(self, client, auth_headers):
+        """History endpoint should return entries after PUT."""
+        await client.put(
+            "/api/v1/settings/lessons",
+            json={"value": "v1"},
+            headers=auth_headers,
+        )
+        await client.put(
+            "/api/v1/settings/lessons",
+            json={"value": "v2"},
+            headers=auth_headers,
+        )
+        resp = await client.get("/api/v1/settings/lessons/history", headers=auth_headers)
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["total"] == 2
+        assert len(data["entries"]) == 2
+        # Most recent first
+        assert data["entries"][0]["new_value"] == "v2"
+        assert data["entries"][1]["new_value"] == "v1"
+
+    async def test_get_setting_history_pagination(self, client, auth_headers):
+        """History endpoint should support limit and offset."""
+        for i in range(5):
+            await client.put(
+                "/api/v1/settings/lessons",
+                json={"value": f"v{i}"},
+                headers=auth_headers,
+            )
+        resp = await client.get(
+            "/api/v1/settings/lessons/history?limit=2&offset=1",
+            headers=auth_headers,
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["total"] == 5
+        assert len(data["entries"]) == 2
+        assert data["offset"] == 1
+        assert data["limit"] == 2
 
 
 class TestChatEndpoint:

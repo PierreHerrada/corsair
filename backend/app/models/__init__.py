@@ -4,6 +4,7 @@ from app.models.chat_message import ChatMessage
 from app.models.conversation import Conversation, MessageRole
 from app.models.repository import Repository
 from app.models.setting import Setting
+from app.models.setting_history import SettingHistory
 from app.models.task import Task, TaskStatus
 
 __all__ = [
@@ -19,4 +20,5 @@ __all__ = [
     "ChatMessage",
     "Repository",
     "Setting",
+    "SettingHistory",
 ]
