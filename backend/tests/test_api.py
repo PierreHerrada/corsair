@@ -144,12 +144,20 @@ class TestTasksEndpoints:
             assert data["status"] == "running"
 
     async def test_stop_task_process_not_in_registry(self, client, auth_headers, sample_task, sample_run):
-        """Active run in DB but process not in registry (e.g. race condition)."""
+        """Active run in DB but process not in registry (e.g. container restart) — should mark as failed."""
+        from app.models import RunStatus, TaskStatus, Task
+
         with patch("app.api.v1.tasks.stop_run", return_value=False):
             resp = await client.post(
                 f"/api/v1/tasks/{sample_task.id}/stop", headers=auth_headers
             )
-            assert resp.status_code == 409
+            assert resp.status_code == 200
+
+        # Run and task should be marked as failed
+        run = await AgentRun.get(id=sample_run.id)
+        assert run.status == RunStatus.FAILED
+        task = await Task.get(id=sample_task.id)
+        assert task.status == TaskStatus.FAILED
 
 
 class TestDashboardEndpoints:

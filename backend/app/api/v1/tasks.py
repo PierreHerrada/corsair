@@ -7,6 +7,8 @@ from typing import Optional
 from fastapi import APIRouter, BackgroundTasks, HTTPException
 from pydantic import BaseModel
 
+from datetime import datetime, timezone
+
 from app.agent.runner import run_agent, stop_run
 from app.models import AgentLog, AgentRun, RunStage, RunStatus, Task, TaskStatus
 from app.websocket.manager import ws_manager
@@ -160,7 +162,13 @@ async def stop_task(task_id: str) -> dict:
 
     stopped = stop_run(str(active_run.id))
     if not stopped:
-        raise HTTPException(status_code=409, detail="No active run for this task")
+        # Process not in memory (e.g. container restarted) — mark orphaned run as failed
+        await AgentRun.filter(id=active_run.id).update(
+            status=RunStatus.FAILED,
+            finished_at=datetime.now(timezone.utc),
+        )
+        await Task.filter(id=task_id).update(status=TaskStatus.FAILED)
+        active_run = await AgentRun.get(id=active_run.id)
 
     return _run_to_dict(active_run)
 
