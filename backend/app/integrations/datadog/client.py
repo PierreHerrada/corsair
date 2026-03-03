@@ -69,13 +69,18 @@ class DatadogIntegration(BaseIntegration):
 
     async def get_trace(self, trace_id: str) -> list[dict]:
         payload = {
-            "filter": {
-                "query": f"trace_id:{trace_id}",
-                "from": "now-24h",
-                "to": "now",
+            "data": {
+                "attributes": {
+                    "filter": {
+                        "query": f"trace_id:{trace_id}",
+                        "from": "now-24h",
+                        "to": "now",
+                    },
+                    "sort": "timestamp",
+                    "page": {"limit": 200},
+                },
+                "type": "search_request",
             },
-            "sort": "timestamp",
-            "page": {"limit": 200},
         }
         async with httpx.AsyncClient() as client:
             resp = await client.post(
