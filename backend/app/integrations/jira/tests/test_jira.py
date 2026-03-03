@@ -111,3 +111,35 @@ class TestJiraIntegration:
         ):
             result = await jira.update_status("SWE-123", "Nonexistent")
             assert result is False
+
+    async def test_update_fields_success(self, jira):
+        mock_response = _make_response(204)
+        mock_put = AsyncMock(return_value=mock_response)
+        with (
+            patch("httpx.AsyncClient.put", mock_put),
+            patch.object(jira, "_get_base_url", return_value="https://test.atlassian.net"),
+        ):
+            fields = {"customfield_10157": "plan text"}
+            result = await jira.update_fields("SWE-123", fields)
+            assert result is True
+            mock_put.assert_called_once()
+            call_kwargs = mock_put.call_args
+            assert call_kwargs.kwargs["json"] == {"fields": fields}
+
+    async def test_update_fields_failure(self, jira):
+        resp = _make_response(400, {"errors": {"customfield_10157": "invalid"}})
+        with (
+            patch("httpx.AsyncClient.put", AsyncMock(return_value=resp)),
+            patch.object(jira, "_get_base_url", return_value="https://test.atlassian.net"),
+        ):
+            result = await jira.update_fields("SWE-123", {"cf": "bad"})
+            assert result is False
+
+    async def test_update_fields_exception(self, jira):
+        err = Exception("Network error")
+        with (
+            patch("httpx.AsyncClient.put", AsyncMock(side_effect=err)),
+            patch.object(jira, "_get_base_url", return_value="https://test.atlassian.net"),
+        ):
+            result = await jira.update_fields("SWE-123", {"cf": "plan"})
+            assert result is False

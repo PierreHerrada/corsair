@@ -348,6 +348,98 @@ class TestNotifyRunComplete:
             # Should not raise
             await _notify_run_complete(sample_task, RunStage.PLAN, success=True)
 
+    async def test_notify_plan_success_transitions_jira_and_posts_plan(self, sample_task):
+        """PLAN success: transition Jira, update custom field, post plan to Slack."""
+        sample_task.jira_key = "SWE-42"
+        await sample_task.save()
+
+        mock_jira = AsyncMock()
+        mock_jira.add_comment = AsyncMock(return_value=True)
+        mock_jira.update_status = AsyncMock(return_value=True)
+        mock_jira.update_fields = AsyncMock(return_value=True)
+
+        mock_slack = AsyncMock()
+        mock_slack.post_thread_update = AsyncMock(return_value={"ts": "1"})
+
+        plan_text = "## Plan\n1. Fix the bug\n2. Add tests"
+
+        with patch(
+            "app.integrations.registry.IntegrationRegistry.get",
+            side_effect=lambda n: {"jira": mock_jira, "slack": mock_slack}.get(n),
+        ), patch("app.agent.runner.settings") as mock_settings:
+            mock_settings.jira_plan_custom_field = "customfield_10157"
+            await _notify_run_complete(
+                sample_task, RunStage.PLAN, success=True, plan_text=plan_text
+            )
+
+        # Jira comment still posted
+        mock_jira.add_comment.assert_called_once_with(
+            "SWE-42", "Plan stage completed successfully."
+        )
+        # Jira status transitioned to Planned
+        mock_jira.update_status.assert_called_once_with("SWE-42", "Planned")
+        # Custom field updated with ADF
+        mock_jira.update_fields.assert_called_once()
+        call_args = mock_jira.update_fields.call_args
+        assert call_args[0][0] == "SWE-42"
+        field_value = call_args[0][1]["customfield_10157"]
+        assert field_value["type"] == "doc"
+        assert field_value["content"][0]["content"][0]["text"] == plan_text
+
+        # Slack gets plan text instead of generic message
+        mock_slack.post_thread_update.assert_called_once_with(
+            "C123456", "1234567890.123456", plan_text
+        )
+
+    async def test_notify_plan_success_skips_custom_field_when_not_configured(self, sample_task):
+        """When jira_plan_custom_field is empty, update_fields should not be called."""
+        sample_task.jira_key = "SWE-42"
+        await sample_task.save()
+
+        mock_jira = AsyncMock()
+        mock_jira.add_comment = AsyncMock(return_value=True)
+        mock_jira.update_status = AsyncMock(return_value=True)
+        mock_jira.update_fields = AsyncMock(return_value=True)
+
+        with patch(
+            "app.integrations.registry.IntegrationRegistry.get",
+            side_effect=lambda n: {"jira": mock_jira}.get(n),
+        ), patch("app.agent.runner.settings") as mock_settings:
+            mock_settings.jira_plan_custom_field = ""
+            await _notify_run_complete(
+                sample_task, RunStage.PLAN, success=True, plan_text="some plan"
+            )
+
+        mock_jira.update_status.assert_called_once_with("SWE-42", "Planned")
+        mock_jira.update_fields.assert_not_called()
+
+    async def test_notify_plan_failure_does_not_transition(self, sample_task):
+        """Failed PLAN should not transition Jira or post plan text."""
+        sample_task.jira_key = "SWE-42"
+        await sample_task.save()
+
+        mock_jira = AsyncMock()
+        mock_jira.add_comment = AsyncMock(return_value=True)
+        mock_jira.update_status = AsyncMock(return_value=True)
+        mock_jira.update_fields = AsyncMock(return_value=True)
+
+        mock_slack = AsyncMock()
+        mock_slack.post_thread_update = AsyncMock(return_value={"ts": "1"})
+
+        with patch(
+            "app.integrations.registry.IntegrationRegistry.get",
+            side_effect=lambda n: {"jira": mock_jira, "slack": mock_slack}.get(n),
+        ):
+            await _notify_run_complete(
+                sample_task, RunStage.PLAN, success=False, plan_text="some plan"
+            )
+
+        mock_jira.update_status.assert_not_called()
+        mock_jira.update_fields.assert_not_called()
+        mock_slack.post_thread_update.assert_called_once_with(
+            "C123456", "1234567890.123456", "Plan stage failed."
+        )
+
 
 class TestConnectionManager:
     def test_init(self):

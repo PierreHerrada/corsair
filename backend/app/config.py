@@ -19,6 +19,7 @@ class Settings(BaseSettings):
     jira_project_key: str = "SWE"
     jira_sync_interval_seconds: int = 300
     jira_sync_label: str = "corsair"
+    jira_plan_custom_field: str = ""
 
     # Datadog
     dd_api_key: str = ""

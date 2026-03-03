@@ -278,7 +278,23 @@ def _classify_event(event: dict) -> tuple[LogType, dict]:
     return LogType.TEXT, {"message": json.dumps(event)}
 
 
-async def _notify_run_complete(task: Task, stage: RunStage, success: bool) -> None:
+def _text_to_adf(text: str) -> dict:
+    """Convert plain text to Atlassian Document Format (ADF)."""
+    return {
+        "type": "doc",
+        "version": 1,
+        "content": [
+            {
+                "type": "paragraph",
+                "content": [{"type": "text", "text": text}],
+            }
+        ],
+    }
+
+
+async def _notify_run_complete(
+    task: Task, stage: RunStage, success: bool, plan_text: str = ""
+) -> None:
     """Send Jira comment and Slack thread message when an agent run finishes."""
     status_text = "completed successfully" if success else "failed"
     stage_label = stage.value.capitalize()
@@ -291,6 +307,15 @@ async def _notify_run_complete(task: Task, stage: RunStage, success: bool) -> No
         jira = IntegrationRegistry.get("jira")
         if jira is not None and task.jira_key:
             await jira.add_comment(task.jira_key, message)
+
+            # Plan-specific Jira updates
+            if stage == RunStage.PLAN and success and plan_text:
+                await jira.update_status(task.jira_key, "Planned")
+                if settings.jira_plan_custom_field:
+                    await jira.update_fields(
+                        task.jira_key,
+                        {settings.jira_plan_custom_field: _text_to_adf(plan_text)},
+                    )
     except Exception:
         logger.exception("Failed to post Jira comment for task %s", task.id)
 
@@ -298,7 +323,10 @@ async def _notify_run_complete(task: Task, stage: RunStage, success: bool) -> No
     try:
         slack = IntegrationRegistry.get("slack")
         if slack is not None and task.slack_channel and task.slack_thread_ts:
-            await slack.post_thread_update(task.slack_channel, task.slack_thread_ts, message)
+            # For successful plan stage, post the plan content
+            use_plan = stage == RunStage.PLAN and success and plan_text
+            slack_message = plan_text if use_plan else message
+            await slack.post_thread_update(task.slack_channel, task.slack_thread_ts, slack_message)
     except Exception:
         logger.exception("Failed to post Slack update for task %s", task.id)
 
@@ -478,7 +506,9 @@ async def run_agent(
 
     tokens_in = 0
     tokens_out = 0
+    reported_cost: Optional[float] = None
     event_count = 0
+    last_assistant_text = ""
 
     try:
         cmd = [
@@ -563,10 +593,18 @@ async def run_agent(
                 content.get("message", "")[:150],
             )
 
-            # Extract token usage from result events
+            # Track last assistant text block for plan extraction
+            if event.get("type") == "assistant" and "message" in event:
+                for block in event["message"].get("content", []):
+                    if block.get("type") == "text" and block.get("text"):
+                        last_assistant_text = block["text"]
+
+            # Extract token usage and cost from result events
             if content.get("is_result"):
                 tokens_in = content.get("tokens_in", 0)
                 tokens_out = content.get("tokens_out", 0)
+                if content.get("cost") is not None:
+                    reported_cost = content["cost"]
                 logger.info(
                     "Result event — tokens_in=%d tokens_out=%d run=%s",
                     tokens_in, tokens_out, run.id,
@@ -592,10 +630,13 @@ async def run_agent(
             run.id, process.pid, process.returncode, event_count,
         )
 
-        # Compute cost
-        cost = (Decimal(tokens_in) / 1_000_000 * INPUT_PRICE_PER_M) + (
-            Decimal(tokens_out) / 1_000_000 * OUTPUT_PRICE_PER_M
-        )
+        # Use CLI-reported cost when available; fall back to estimate
+        if reported_cost is not None:
+            cost = Decimal(str(reported_cost))
+        else:
+            cost = (Decimal(tokens_in) / 1_000_000 * INPUT_PRICE_PER_M) + (
+                Decimal(tokens_out) / 1_000_000 * OUTPUT_PRICE_PER_M
+            )
 
         if process.returncode == 0:
             logger.info(
@@ -623,7 +664,7 @@ async def run_agent(
 
             # Notify integrations
             await _emit(run.id, "Notifying integrations...", ws_broadcast)
-            await _notify_run_complete(task, stage, success=True)
+            await _notify_run_complete(task, stage, success=True, plan_text=last_assistant_text)
             await _emit(run.id, "Notifications sent.", ws_broadcast)
         else:
             stopped_by_user = run_id_str in _stopped_runs

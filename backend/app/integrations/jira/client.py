@@ -184,6 +184,30 @@ class JiraIntegration(BaseIntegration):
             logger.exception("Jira: failed to add comment to %s", issue_key)
             return False
 
+    async def update_fields(self, issue_key: str, fields: dict) -> bool:
+        """Update arbitrary fields on a Jira issue."""
+        url = f"{self._get_base_url()}/rest/api/3/issue/{issue_key}"
+        logger.info("Jira: updating fields on %s", issue_key)
+        try:
+            async with httpx.AsyncClient() as client:
+                resp = await client.put(
+                    url,
+                    headers=self._get_headers(),
+                    json={"fields": fields},
+                    timeout=30,
+                )
+                if resp.status_code == 204:
+                    logger.info("Jira: fields updated on %s", issue_key)
+                    return True
+                logger.error(
+                    "Jira: update fields on %s failed with status %d — %s",
+                    issue_key, resp.status_code, resp.text[:500],
+                )
+                return False
+        except Exception:
+            logger.exception("Jira: failed to update fields on %s", issue_key)
+            return False
+
     async def update_status(self, issue_key: str, transition_name: str) -> bool:
         async with httpx.AsyncClient() as client:
             resp = await client.get(
