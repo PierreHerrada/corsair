@@ -10,6 +10,9 @@ export function useWebSocket(runId: string | null) {
   const connect = useCallback(() => {
     if (!runId) return;
 
+    // Clear stale logs from a previous run
+    setLogs([]);
+
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
     const token = getToken() ?? "";
     const ws = new WebSocket(

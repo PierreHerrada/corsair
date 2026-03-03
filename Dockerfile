@@ -33,6 +33,10 @@ RUN apt-get update && \
 
 WORKDIR /app
 
+# Create non-root user for running Claude CLI
+# (--dangerously-skip-permissions rejects root execution)
+RUN useradd -m -s /bin/bash corsair
+
 # Copy Python dependencies
 COPY --from=python-deps /usr/local/lib/python3.12/site-packages /usr/local/lib/python3.12/site-packages
 COPY --from=python-deps /usr/local/bin /usr/local/bin
@@ -53,6 +57,9 @@ RUN chmod +x /app/entrypoint.sh
 
 # Remove default nginx config
 RUN rm -f /etc/nginx/sites-enabled/default
+
+# Give corsair user access to the app directory for agent work
+RUN chown -R corsair:corsair /app/backend /home/corsair
 
 EXPOSE 80 8000
 

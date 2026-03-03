@@ -4,6 +4,7 @@ import asyncio
 import json
 import logging
 import os
+import pwd
 import uuid
 from datetime import datetime, timezone
 from decimal import Decimal
@@ -247,12 +248,26 @@ async def run_agent(
         ]
         logger.info("Subprocess command: %s", " ".join(cmd[:7]) + " -p <prompt>")
 
+        # Run as non-root user — Claude CLI rejects --dangerously-skip-permissions under root
+        def _demote_to_corsair() -> None:
+            try:
+                pw = pwd.getpwnam("corsair")
+                os.setgid(pw.pw_gid)
+                os.setuid(pw.pw_uid)
+            except KeyError:
+                logger.warning("User 'corsair' not found — running as current user")
+
         process = await asyncio.create_subprocess_exec(
             *cmd,
             cwd=cwd,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
-            env={**os.environ, "ANTHROPIC_API_KEY": settings.anthropic_api_key},
+            env={
+                **os.environ,
+                "ANTHROPIC_API_KEY": settings.anthropic_api_key,
+                "HOME": pwd.getpwnam("corsair").pw_dir if os.getuid() == 0 else os.environ.get("HOME", ""),
+            },
+            preexec_fn=_demote_to_corsair if os.getuid() == 0 else None,
         )
         _active_processes[run_id_str] = process
         logger.info("Claude CLI process started — pid=%s run=%s", process.pid, run.id)
