@@ -143,12 +143,28 @@ async def import_jira_issue(issue: dict) -> Optional[Task]:
     key = issue["key"]
     existing = await Task.filter(jira_key=key).first()
     if existing:
+        updated = False
         if existing.deleted_at is not None:
             existing.deleted_at = None
-            await existing.save()
+            updated = True
             logger.info("Jira import: restored soft-deleted task %s (%s)", key, existing.id)
+
+        # Update status from Jira
+        fields = issue.get("fields", {})
+        status_name = fields.get("status", {}).get("name", "")
+        jira_status = _map_jira_status(status_name)
+        if existing.status != jira_status:
+            logger.info(
+                "Jira import: updating task %s (%s) status %s → %s",
+                key, existing.id, existing.status.value, jira_status.value,
+            )
+            existing.status = jira_status
+            updated = True
+
+        if updated:
+            await existing.save()
             return existing
-        logger.debug("Jira import: skipping %s (already exists)", key)
+        logger.debug("Jira import: skipping %s (already exists, status unchanged)", key)
         return None
 
     fields = issue.get("fields", {})

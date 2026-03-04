@@ -158,12 +158,26 @@ class TestImportJiraIssue:
         assert task.deleted_at is None
 
     @patch("app.integrations.jira.sync.settings")
-    async def test_skips_existing_active_task(self, mock_settings, jira_task):
+    async def test_skips_existing_active_task_same_status(self, mock_settings, jira_task):
+        """Existing task with unchanged status returns None."""
         mock_settings.jira_base_url = "https://company.atlassian.net"
-        issue = _make_issue("SWE-100")
+        issue = _make_issue("SWE-100", status_name="To Do")  # maps to BACKLOG, same as fixture
 
         task = await import_jira_issue(issue)
         assert task is None
+
+    @patch("app.integrations.jira.sync.settings")
+    async def test_updates_existing_task_status(self, mock_settings, jira_task):
+        """Existing task with changed Jira status gets updated in the DB."""
+        mock_settings.jira_base_url = "https://company.atlassian.net"
+        issue = _make_issue("SWE-100", status_name="In Progress")
+
+        task = await import_jira_issue(issue)
+
+        assert task is not None
+        assert task.id == jira_task.id
+        refreshed = await Task.get(id=jira_task.id)
+        assert refreshed.status == TaskStatus.WORKING
 
     @patch("app.integrations.jira.sync.settings")
     async def test_restores_soft_deleted_task(self, mock_settings, deleted_jira_task):
@@ -175,6 +189,19 @@ class TestImportJiraIssue:
         assert task is not None
         assert task.id == deleted_jira_task.id
         assert task.deleted_at is None
+
+    @patch("app.integrations.jira.sync.settings")
+    async def test_restores_and_updates_status(self, mock_settings, deleted_jira_task):
+        """Soft-deleted task that reappears with a new status gets both restored and updated."""
+        mock_settings.jira_base_url = "https://company.atlassian.net"
+        issue = _make_issue("SWE-200", status_name="Done")
+
+        task = await import_jira_issue(issue)
+
+        assert task is not None
+        assert task.deleted_at is None
+        refreshed = await Task.get(id=deleted_jira_task.id)
+        assert refreshed.status == TaskStatus.DONE
 
 
 class TestPushBoardTasksToJira:
