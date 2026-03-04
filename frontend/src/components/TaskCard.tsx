@@ -1,3 +1,4 @@
+import { useDraggable } from "@dnd-kit/core";
 import { Link } from "react-router-dom";
 import type { Task, TaskStatus } from "../types";
 import PRBadge from "./PRBadge";
@@ -18,8 +19,18 @@ interface TaskCardProps {
 }
 
 export default function TaskCard({ task, onRefresh }: TaskCardProps) {
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
+    id: task.id,
+    data: { task },
+  });
+
   return (
-    <div className="bg-abyss border border-foam/8 rounded-lg p-4 mb-3 max-w-sm">
+    <div
+      ref={setNodeRef}
+      {...listeners}
+      {...attributes}
+      className={`rounded-lg p-4 mb-3 max-w-sm cursor-grab active:cursor-grabbing transition-opacity ${isDragging ? "opacity-30" : ""} ${task.latest_run?.status === "running" ? "bg-gold/10 border border-gold/30" : "bg-abyss border border-foam/8"}`}
+    >
       <div className="flex items-start justify-between mb-2">
         <Link
           to={`/tasks/${task.id}`}

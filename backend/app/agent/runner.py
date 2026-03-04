@@ -124,6 +124,7 @@ def _build_prompt(task: Task, stage: RunStage, datadog_context: str = "") -> str
             task_repo=task.repo,
             title=task.title,
             description=task.description,
+            jira_key=task.jira_key,
         )
     elif stage == RunStage.REVIEW:
         return build_review_prompt(

@@ -59,15 +59,6 @@ export default function StageControls({ task, onRefresh }: StageControlsProps) {
           {loading === "stop" ? "Stopping..." : "Stop"}
         </button>
       )}
-      {task.status === "failed" && (
-        <button
-          onClick={handleRetry}
-          disabled={loading !== null}
-          className="text-xs px-3 py-1 rounded bg-coral/20 text-coral hover:bg-coral/30 disabled:opacity-50"
-        >
-          {loading === "retry" ? "Retrying..." : "Retry"}
-        </button>
-      )}
       {task.status === "backlog" && (
         <button
           onClick={() => handleTrigger("plan")}
@@ -93,6 +84,15 @@ export default function StageControls({ task, onRefresh }: StageControlsProps) {
           className="text-xs px-3 py-1 rounded bg-teal/20 text-teal hover:bg-teal/30 disabled:opacity-50"
         >
           {loading === "review" ? "Starting..." : "Run Review"}
+        </button>
+      )}
+      {task.status === "failed" && !isRunning && (
+        <button
+          onClick={handleRetry}
+          disabled={loading !== null}
+          className="text-xs px-3 py-1 rounded bg-coral/20 text-coral hover:bg-coral/30 disabled:opacity-50"
+        >
+          {loading === "retry" ? "Retrying..." : "Retry"}
         </button>
       )}
     </div>
