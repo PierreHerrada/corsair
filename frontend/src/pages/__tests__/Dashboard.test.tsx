@@ -1,6 +1,6 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import Dashboard from "../Dashboard";
 
 vi.mock("../../api/dashboard", () => ({
@@ -38,6 +38,8 @@ const defaultStats = {
   cost_by_stage: { plan: 1.5, work: 3.0, review: 1.0, investigate: 0 },
 };
 
+afterEach(() => { vi.restoreAllMocks(); });
+
 describe("Dashboard", () => {
   it("shows loading state initially", () => {
     vi.mocked(fetchStats).mockReturnValue(new Promise(() => {}));
@@ -48,9 +50,9 @@ describe("Dashboard", () => {
   });
 
   it("renders dashboard data after loading", async () => {
-    vi.mocked(fetchStats).mockResolvedValueOnce(defaultStats);
-    vi.mocked(fetchCosts).mockResolvedValueOnce([]);
-    vi.mocked(fetchTasks).mockResolvedValueOnce([]);
+    vi.mocked(fetchStats).mockResolvedValue(defaultStats);
+    vi.mocked(fetchCosts).mockResolvedValue([]);
+    vi.mocked(fetchTasks).mockResolvedValue([]);
     renderDashboard();
     await waitFor(() => {
       expect(screen.getByText("Dashboard")).toBeInTheDocument();
@@ -60,9 +62,9 @@ describe("Dashboard", () => {
   });
 
   it("shows error when fetch fails", async () => {
-    vi.mocked(fetchStats).mockRejectedValueOnce(new Error("Server error"));
-    vi.mocked(fetchCosts).mockRejectedValueOnce(new Error("Server error"));
-    vi.mocked(fetchTasks).mockResolvedValueOnce([]);
+    vi.mocked(fetchStats).mockRejectedValue(new Error("Server error"));
+    vi.mocked(fetchCosts).mockRejectedValue(new Error("Server error"));
+    vi.mocked(fetchTasks).mockResolvedValue([]);
     renderDashboard();
     await waitFor(() => {
       expect(screen.getByText("Server error")).toBeInTheDocument();
@@ -70,9 +72,9 @@ describe("Dashboard", () => {
   });
 
   it("renders active agents section when tasks are running", async () => {
-    vi.mocked(fetchStats).mockResolvedValueOnce(defaultStats);
-    vi.mocked(fetchCosts).mockResolvedValueOnce([]);
-    vi.mocked(fetchTasks).mockResolvedValueOnce([
+    vi.mocked(fetchStats).mockResolvedValue(defaultStats);
+    vi.mocked(fetchCosts).mockResolvedValue([]);
+    vi.mocked(fetchTasks).mockResolvedValue([
       {
         id: "t1",
         title: "Running task",
@@ -115,9 +117,9 @@ describe("Dashboard", () => {
   });
 
   it("hides active agents section when no tasks are running", async () => {
-    vi.mocked(fetchStats).mockResolvedValueOnce(defaultStats);
-    vi.mocked(fetchCosts).mockResolvedValueOnce([]);
-    vi.mocked(fetchTasks).mockResolvedValueOnce([
+    vi.mocked(fetchStats).mockResolvedValue(defaultStats);
+    vi.mocked(fetchCosts).mockResolvedValue([]);
+    vi.mocked(fetchTasks).mockResolvedValue([
       {
         id: "t1",
         title: "Done task",

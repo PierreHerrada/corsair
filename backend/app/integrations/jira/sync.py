@@ -22,7 +22,7 @@ async def _analyze_task_safe(task) -> None:
 
 _sync_task: Optional[asyncio.Task] = None
 
-_STATUS_MAP: dict[str, TaskStatus] = {
+_DEFAULT_STATUS_MAP: dict[str, TaskStatus] = {
     "to do": TaskStatus.BACKLOG,
     "backlog": TaskStatus.BACKLOG,
     "icebox": TaskStatus.BACKLOG,
@@ -36,9 +36,110 @@ _STATUS_MAP: dict[str, TaskStatus] = {
     "resolved": TaskStatus.DONE,
 }
 
+# Reverse mapping: Corsair TaskStatus → list of Jira transition names to try (in order).
+# The first matching available transition will be used.
+_DEFAULT_REVERSE_STATUS_MAP: dict[TaskStatus, list[str]] = {
+    TaskStatus.BACKLOG: ["To Do", "Backlog", "Open"],
+    TaskStatus.PLANNED: ["Selected for Development", "Planned", "To Do"],
+    TaskStatus.WORKING: ["In Progress", "Start Progress"],
+    TaskStatus.REVIEWING: ["In Review", "Review"],
+    TaskStatus.DONE: ["Done", "Closed", "Resolved"],
+    TaskStatus.FAILED: ["To Do", "Backlog"],
+}
 
-def _map_jira_status(name: str) -> TaskStatus:
-    return _STATUS_MAP.get(name.lower(), TaskStatus.BACKLOG)
+
+async def _get_status_map() -> dict[str, TaskStatus]:
+    """Read jira_status_mapping from the DB, falling back to defaults."""
+    import json
+
+    from app.models.setting import Setting
+
+    try:
+        row = await Setting.filter(key="jira_status_mapping").first()
+        if row and row.value:
+            raw = json.loads(row.value)
+            if isinstance(raw, dict):
+                valid_values = {s.value for s in TaskStatus}
+                merged = dict(_DEFAULT_STATUS_MAP)
+                for k, v in raw.items():
+                    if v in valid_values:
+                        merged[k.lower()] = TaskStatus(v)
+                return merged
+    except (json.JSONDecodeError, ValueError, TypeError):
+        logger.warning("Invalid jira_status_mapping setting, using defaults")
+    return _DEFAULT_STATUS_MAP
+
+
+async def _map_jira_status(name: str) -> TaskStatus:
+    status_map = await _get_status_map()
+    return status_map.get(name.lower(), TaskStatus.BACKLOG)
+
+
+async def _get_reverse_status_map() -> dict[TaskStatus, list[str]]:
+    """Read jira_reverse_status_mapping from the DB, falling back to defaults."""
+    import json
+
+    from app.models.setting import Setting
+
+    try:
+        row = await Setting.filter(key="jira_reverse_status_mapping").first()
+        if row and row.value:
+            raw = json.loads(row.value)
+            if isinstance(raw, dict):
+                valid_statuses = {s.value for s in TaskStatus}
+                merged = dict(_DEFAULT_REVERSE_STATUS_MAP)
+                for k, v in raw.items():
+                    if k in valid_statuses:
+                        names = v if isinstance(v, list) else [v]
+                        merged[TaskStatus(k)] = [str(n) for n in names]
+                return merged
+    except (json.JSONDecodeError, ValueError, TypeError):
+        logger.warning("Invalid jira_reverse_status_mapping setting, using defaults")
+    return _DEFAULT_REVERSE_STATUS_MAP
+
+
+async def sync_status_to_jira(task: Task, new_status: TaskStatus) -> bool:
+    """Push a Corsair status change to the linked Jira issue.
+
+    Tries each candidate transition name until one succeeds.
+    Returns True if the Jira status was updated, False otherwise.
+    """
+    if not task.jira_key:
+        return False
+
+    from app.integrations.registry import IntegrationRegistry
+
+    jira = IntegrationRegistry.get("jira")
+    if jira is None or not isinstance(jira, JiraIntegration):
+        logger.debug("Jira integration not available, skipping status sync")
+        return False
+
+    reverse_map = await _get_reverse_status_map()
+    candidates = reverse_map.get(new_status)
+    if not candidates:
+        logger.warning("No Jira transition mapping for status %s", new_status.value)
+        return False
+
+    for transition_name in candidates:
+        try:
+            ok = await jira.update_status(task.jira_key, transition_name)
+            if ok:
+                logger.info(
+                    "Jira status sync: %s → transition '%s' for %s",
+                    new_status.value, transition_name, task.jira_key,
+                )
+                return True
+        except Exception:
+            logger.exception(
+                "Jira status sync: error trying transition '%s' on %s",
+                transition_name, task.jira_key,
+            )
+
+    logger.warning(
+        "Jira status sync: no matching transition found for %s on %s (tried: %s)",
+        new_status.value, task.jira_key, candidates,
+    )
+    return False
 
 
 async def sync_jira_tickets(jira: JiraIntegration) -> int:
@@ -152,7 +253,7 @@ async def import_jira_issue(issue: dict) -> Optional[Task]:
         # Update status from Jira
         fields = issue.get("fields", {})
         status_name = fields.get("status", {}).get("name", "")
-        jira_status = _map_jira_status(status_name)
+        jira_status = await _map_jira_status(status_name)
         if existing.status != jira_status:
             logger.info(
                 "Jira import: updating task %s (%s) status %s → %s",
@@ -171,7 +272,7 @@ async def import_jira_issue(issue: dict) -> Optional[Task]:
     summary = fields.get("summary", key)
     description = extract_text_from_adf(fields.get("description"))
     status_name = fields.get("status", {}).get("name", "")
-    status = _map_jira_status(status_name)
+    status = await _map_jira_status(status_name)
     jira_url = f"{settings.jira_base_url.rstrip('/')}/browse/{key}"
 
     logger.info(
@@ -196,9 +297,23 @@ async def import_jira_issue(issue: dict) -> Optional[Task]:
     return task
 
 
+async def _get_sync_interval() -> int:
+    """Read jira_sync_interval from the DB, falling back to 60s."""
+    from app.models.setting import Setting
+
+    try:
+        row = await Setting.filter(key="jira_sync_interval").first()
+        if row and row.value:
+            val = int(row.value)
+            if val > 0:
+                return val
+    except (ValueError, TypeError):
+        pass
+    return 60
+
+
 async def _sync_loop(jira: JiraIntegration) -> None:
-    interval = settings.jira_sync_interval_seconds
-    logger.info("Jira sync loop started (interval: %ds)", interval)
+    logger.info("Jira sync loop started")
     while True:
         try:
             # Pull: Jira → board
@@ -215,6 +330,7 @@ async def _sync_loop(jira: JiraIntegration) -> None:
         except Exception:
             logger.exception("Jira sync: unexpected error in sync loop")
 
+        interval = await _get_sync_interval()
         await asyncio.sleep(interval)
 
 

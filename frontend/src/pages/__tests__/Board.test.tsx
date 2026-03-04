@@ -1,6 +1,6 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import Board from "../Board";
 
 vi.mock("../../api/tasks", () => ({
@@ -9,6 +9,8 @@ vi.mock("../../api/tasks", () => ({
 }));
 
 import { fetchTasks } from "../../api/tasks";
+
+afterEach(() => { vi.restoreAllMocks(); });
 
 function renderWithRouter(ui: React.ReactElement) {
   return render(<MemoryRouter>{ui}</MemoryRouter>);
@@ -22,7 +24,7 @@ describe("Board", () => {
   });
 
   it("renders task board after loading", async () => {
-    vi.mocked(fetchTasks).mockResolvedValueOnce([
+    vi.mocked(fetchTasks).mockResolvedValue([
       {
         id: "t1",
         title: "Test task",
@@ -48,7 +50,7 @@ describe("Board", () => {
   });
 
   it("shows error when fetch fails", async () => {
-    vi.mocked(fetchTasks).mockRejectedValueOnce(new Error("Network error"));
+    vi.mocked(fetchTasks).mockRejectedValue(new Error("Network error"));
     renderWithRouter(<Board />);
     await waitFor(() => {
       expect(screen.getByText("Network error")).toBeInTheDocument();
@@ -56,7 +58,7 @@ describe("Board", () => {
   });
 
   it("renders the Refresh button", async () => {
-    vi.mocked(fetchTasks).mockResolvedValueOnce([]);
+    vi.mocked(fetchTasks).mockResolvedValue([]);
     renderWithRouter(<Board />);
     await waitFor(() => {
       expect(screen.getByText("Refresh")).toBeInTheDocument();

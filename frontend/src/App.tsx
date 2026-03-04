@@ -21,7 +21,7 @@ function AppContent() {
   return (
     <div className="min-h-screen bg-deep text-white">
       {!isLoginPage && isAuthenticated && (
-        <nav className="bg-navy border-b border-foam/8 px-6 py-3 flex items-center gap-6">
+        <nav className="sticky top-0 z-50 bg-navy border-b border-foam/8 px-6 py-3 flex items-center gap-6">
           <img src="/logo.svg" alt="Corsair" className="h-8 w-8" />
           <span className="text-foam font-semibold text-lg">corsair</span>
           <a href="/" className="text-mist hover:text-white text-sm">

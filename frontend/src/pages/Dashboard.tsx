@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import ActiveAgentRow from "../components/ActiveAgentRow";
 import CostWidget from "../components/CostWidget";
 import { fetchTasks } from "../api/tasks";
@@ -14,9 +14,13 @@ const STATUS_COLORS: Record<TaskStatus, string> = {
   failed: "text-coral",
 };
 
+const ACTIVE_POLL_MS = 5_000;
+const IDLE_POLL_MS = 15_000;
+
 export default function Dashboard() {
-  const { stats, costs, loading: statsLoading, error } = useDashboard();
+  const { stats, costs, loading: statsLoading, error, refresh: refreshDashboard } = useDashboard();
   const [tasks, setTasks] = useState<Task[]>([]);
+  const initialTaskLoad = useRef(true);
 
   const refreshTasks = useCallback(async () => {
     try {
@@ -24,8 +28,15 @@ export default function Dashboard() {
       setTasks(data);
     } catch {
       // task fetch errors are non-fatal; metrics still display
+    } finally {
+      initialTaskLoad.current = false;
     }
   }, []);
+
+  // Combined refresh for polling
+  const refreshAll = useCallback(async () => {
+    await Promise.all([refreshTasks(), refreshDashboard()]);
+  }, [refreshTasks, refreshDashboard]);
 
   useEffect(() => {
     refreshTasks();
@@ -35,12 +46,12 @@ export default function Dashboard() {
     (t) => t.latest_run?.status === "running",
   );
 
-  // Auto-refresh every 5s while agents are running
+  // Poll faster (5s) when agents are running, otherwise 15s
   useEffect(() => {
-    if (activeAgents.length === 0) return;
-    const interval = setInterval(refreshTasks, 5000);
+    const ms = activeAgents.length > 0 ? ACTIVE_POLL_MS : IDLE_POLL_MS;
+    const interval = setInterval(refreshAll, ms);
     return () => clearInterval(interval);
-  }, [activeAgents.length, refreshTasks]);
+  }, [activeAgents.length, refreshAll]);
 
   if (statsLoading) {
     return (

@@ -78,6 +78,7 @@ async def update_task(task_id: str, body: TaskUpdate) -> dict:
     task = await Task.filter(id=task_id).first()
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
+    old_status = task.status
     updates = {}
     if body.status is not None:
         updates["status"] = body.status
@@ -86,6 +87,19 @@ async def update_task(task_id: str, body: TaskUpdate) -> dict:
     if updates:
         await Task.filter(id=task_id).update(**updates)
     task = await Task.get(id=task_id)
+
+    # Sync status change to Jira if the task has a linked ticket
+    if body.status is not None and body.status != old_status and task.jira_key:
+        try:
+            from app.integrations.jira.sync import sync_status_to_jira
+
+            await sync_status_to_jira(task, body.status)
+        except Exception:
+            logger.exception(
+                "Failed to sync status to Jira for task %s (%s)",
+                task_id, task.jira_key,
+            )
+
     return await _task_to_dict(task)
 
 
@@ -151,7 +165,7 @@ async def retry_task(task_id: str) -> dict:
             if jira is not None and isinstance(jira, JiraIntegration):
                 issue = await jira.get_issue(task.jira_key)
                 jira_status_name = issue.get("fields", {}).get("status", {}).get("name", "")
-                new_status = _map_jira_status(jira_status_name)
+                new_status = await _map_jira_status(jira_status_name)
                 logger.info(
                     "Retry task %s: Jira %s status '%s' → %s",
                     task.id, task.jira_key, jira_status_name, new_status.value,
