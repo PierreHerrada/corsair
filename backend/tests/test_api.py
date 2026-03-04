@@ -9,6 +9,7 @@ from httpx import ASGITransport, AsyncClient
 
 from app.main import create_app
 from app.models import AgentRun, ChatMessage, Repository, RunStage, RunStatus, Task, TaskStatus
+from app.models.internal_log import InternalLog
 from app.models.setting import Setting
 
 
@@ -832,3 +833,155 @@ class TestRepositoriesEndpoints:
     async def test_repositories_require_auth(self, client):
         resp = await client.get("/api/v1/repositories")
         assert resp.status_code in (401, 403)
+
+
+class TestLogsEndpoint:
+    async def test_list_logs_empty(self, client, auth_headers):
+        resp = await client.get("/api/v1/logs", headers=auth_headers)
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["total"] == 0
+        assert data["logs"] == []
+
+    async def test_list_logs_returns_entries(self, client, auth_headers):
+        await InternalLog.create(
+            id=uuid.uuid4(), source="test", level="INFO",
+            logger_name="test.logger", message="Hello",
+        )
+        resp = await client.get("/api/v1/logs", headers=auth_headers)
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["total"] == 1
+        assert data["logs"][0]["source"] == "test"
+        assert data["logs"][0]["message"] == "Hello"
+
+    async def test_list_logs_filter_by_source(self, client, auth_headers):
+        await InternalLog.create(
+            id=uuid.uuid4(), source="jira", level="INFO",
+            logger_name="jira.sync", message="synced",
+        )
+        await InternalLog.create(
+            id=uuid.uuid4(), source="slack", level="ERROR",
+            logger_name="slack.bot", message="failed",
+        )
+        resp = await client.get("/api/v1/logs?source=jira", headers=auth_headers)
+        data = resp.json()
+        assert data["total"] == 1
+        assert data["logs"][0]["source"] == "jira"
+
+    async def test_list_logs_filter_by_level(self, client, auth_headers):
+        await InternalLog.create(
+            id=uuid.uuid4(), source="test", level="ERROR",
+            logger_name="test.logger", message="err",
+        )
+        await InternalLog.create(
+            id=uuid.uuid4(), source="test", level="INFO",
+            logger_name="test.logger", message="info",
+        )
+        resp = await client.get("/api/v1/logs?level=error", headers=auth_headers)
+        data = resp.json()
+        assert data["total"] == 1
+        assert data["logs"][0]["level"] == "ERROR"
+
+
+class TestJiraEndpoint:
+    async def test_import_no_jira_configured(self, client, auth_headers):
+        """Returns 503 when Jira integration is not configured."""
+        with patch(
+            "app.api.v1.jira.IntegrationRegistry.get", return_value=None,
+        ):
+            resp = await client.post(
+                "/api/v1/jira/import",
+                json={"issue_key": "SWE-1"},
+                headers=auth_headers,
+            )
+        assert resp.status_code == 503
+
+    async def test_import_existing_task(self, client, auth_headers, sample_task):
+        """Returns exists when task already on board."""
+        sample_task.jira_key = "SWE-99"
+        await sample_task.save()
+
+        mock_jira = MagicMock()
+        mock_jira.__class__ = type("JiraIntegration", (), {})
+        with patch(
+            "app.api.v1.jira.IntegrationRegistry.get", return_value=mock_jira,
+        ), patch("app.api.v1.jira.isinstance", return_value=True):
+            resp = await client.post(
+                "/api/v1/jira/import",
+                json={"issue_key": "SWE-99"},
+                headers=auth_headers,
+            )
+        assert resp.status_code == 200
+        assert resp.json()["status"] == "exists"
+
+    async def test_import_fetch_failure(self, client, auth_headers):
+        """Returns 404 when Jira issue cannot be fetched."""
+        mock_jira = AsyncMock()
+        mock_jira.get_issue = AsyncMock(side_effect=Exception("not found"))
+
+        with patch(
+            "app.api.v1.jira._get_jira", return_value=mock_jira,
+        ):
+            resp = await client.post(
+                "/api/v1/jira/import",
+                json={"issue_key": "SWE-404"},
+                headers=auth_headers,
+            )
+        assert resp.status_code == 404
+
+    async def test_import_success(self, client, auth_headers):
+        """Successfully imports a Jira issue."""
+        mock_jira = AsyncMock()
+        mock_jira.get_issue = AsyncMock(return_value={"key": "SWE-10", "fields": {}})
+
+        mock_task = MagicMock()
+        mock_task.id = uuid.uuid4()
+
+        with patch(
+            "app.api.v1.jira._get_jira", return_value=mock_jira,
+        ), patch(
+            "app.api.v1.jira.import_jira_issue", return_value=mock_task,
+        ):
+            resp = await client.post(
+                "/api/v1/jira/import",
+                json={"issue_key": "SWE-10"},
+                headers=auth_headers,
+            )
+        assert resp.status_code == 200
+        assert resp.json()["status"] == "created"
+
+
+class TestRetryEndpoint:
+    async def test_retry_not_found(self, client, auth_headers):
+        fake_id = str(uuid.uuid4())
+        resp = await client.post(f"/api/v1/tasks/{fake_id}/retry", headers=auth_headers)
+        assert resp.status_code == 404
+
+    async def test_retry_not_failed(self, client, auth_headers, sample_task):
+        resp = await client.post(
+            f"/api/v1/tasks/{sample_task.id}/retry", headers=auth_headers,
+        )
+        assert resp.status_code == 409
+
+    async def test_retry_resets_to_backlog(self, client, auth_headers, sample_task):
+        sample_task.status = TaskStatus.FAILED
+        await sample_task.save()
+        resp = await client.post(
+            f"/api/v1/tasks/{sample_task.id}/retry", headers=auth_headers,
+        )
+        assert resp.status_code == 200
+        assert resp.json()["status"] == "backlog"
+
+
+class TestStopEndpoint:
+    async def test_stop_not_found(self, client, auth_headers):
+        fake_id = str(uuid.uuid4())
+        resp = await client.post(f"/api/v1/tasks/{fake_id}/stop", headers=auth_headers)
+        assert resp.status_code == 404
+
+    async def test_stop_no_active_run(self, client, auth_headers, sample_task):
+        resp = await client.post(
+            f"/api/v1/tasks/{sample_task.id}/stop", headers=auth_headers,
+        )
+        assert resp.status_code == 409

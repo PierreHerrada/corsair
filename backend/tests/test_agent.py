@@ -9,6 +9,8 @@ from app.agent.cost import TokenUsage, parse_claude_code_usage
 from app.agent.prompts import build_plan_prompt, build_review_prompt, build_work_prompt
 from app.agent.runner import (
     _active_processes,
+    _build_work_slack_message,
+    _FUNNY_WORDS,
     _get_base_prompt,
     _get_enabled_repos,
     _get_setting_value,
@@ -453,6 +455,77 @@ class TestNotifyRunComplete:
         mock_slack.post_thread_update.assert_called_once_with(
             "C123456", "1234567890.123456", "Plan stage failed."
         )
+
+
+class TestBuildWorkSlackMessage:
+    def test_includes_funny_word_and_title(self, sample_task):
+        msg = _build_work_slack_message(sample_task, "", "")
+        # Must start with a bold funny word
+        assert msg.startswith("*")
+        assert sample_task.title in msg
+        # The funny word must be from the list
+        for word in _FUNNY_WORDS:
+            if word in msg:
+                break
+        else:
+            raise AssertionError("No funny word found in message")
+
+    def test_includes_pr_url(self, sample_task):
+        msg = _build_work_slack_message(sample_task, "", "https://github.com/org/repo/pull/42")
+        assert "https://github.com/org/repo/pull/42" in msg
+        assert ":rocket:" in msg
+
+    def test_includes_jira_key(self, sample_task):
+        sample_task.jira_key = "SWE-99"
+        sample_task.jira_url = "https://jira.com/SWE-99"
+        msg = _build_work_slack_message(sample_task, "", "")
+        assert "https://jira.com/SWE-99" in msg
+        assert ":ticket:" in msg
+
+    def test_includes_summary_truncated(self, sample_task):
+        long_text = "A" * 600
+        msg = _build_work_slack_message(sample_task, long_text, "")
+        assert ":memo:" in msg
+        assert "..." in msg
+        # Truncated to 500 + "..."
+        assert "A" * 501 not in msg
+
+    def test_no_jira_no_pr(self, sample_task):
+        sample_task.jira_key = None
+        sample_task.jira_url = None
+        msg = _build_work_slack_message(sample_task, "", "")
+        assert ":ticket:" not in msg
+        assert ":rocket:" not in msg
+
+
+class TestNotifyWorkSuccess:
+    async def test_work_success_sends_dynamic_slack_message(self, sample_task):
+        sample_task.jira_key = "SWE-42"
+        await sample_task.save()
+
+        mock_jira = AsyncMock()
+        mock_jira.add_comment = AsyncMock(return_value=True)
+
+        mock_slack = AsyncMock()
+        mock_slack.post_thread_update = AsyncMock(return_value={"ts": "1"})
+
+        with patch(
+            "app.integrations.registry.IntegrationRegistry.get",
+            side_effect=lambda n: {"jira": mock_jira, "slack": mock_slack}.get(n),
+        ):
+            await _notify_run_complete(
+                sample_task, RunStage.WORK, success=True,
+                plan_text="Implemented feature X", pr_url="https://github.com/org/repo/pull/1",
+            )
+
+        # Slack should get a dynamic message, not the generic one
+        slack_call = mock_slack.post_thread_update.call_args
+        slack_msg = slack_call[0][2]
+        assert sample_task.title in slack_msg
+        assert "https://github.com/org/repo/pull/1" in slack_msg
+        assert "Implemented feature X" in slack_msg
+        # Should NOT be the generic message
+        assert slack_msg != "Work stage completed successfully."
 
 
 class TestConnectionManager:

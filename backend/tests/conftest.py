@@ -28,6 +28,7 @@ MODELS = [
     "app.models.setting",
     "app.models.setting_history",
     "app.models.repository",
+    "app.models.internal_log",
 ]
 
 
