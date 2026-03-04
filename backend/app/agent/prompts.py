@@ -46,14 +46,20 @@ def build_work_prompt(
     return f"""You are a senior software engineer.
 Implement the plan in PLAN.md exactly.
 Write clean, well-tested code.
-Commit your changes with descriptive commit messages.
-Do not open a PR yet.{repo_hint}{ticket_context}"""
+
+Git workflow (follow these steps exactly):
+1. Create a new branch from the current branch. The branch name MUST start with `corsair/` followed by `feat/` or `fix/` and a short kebab-case description (e.g. `corsair/feat/add-user-auth`, `corsair/fix/null-pointer-crash`).
+2. Commit your changes with descriptive commit messages.
+3. Push the branch to the remote: `git push -u origin <branch-name>`.
+4. Open a Pull Request on GitHub with a clear title and summary of changes. Base branch: main.
+5. Write the PR URL to a file called PR_URL.txt at the workspace root (just the URL, nothing else).{repo_hint}{ticket_context}"""
 
 
 def build_review_prompt(jira_key: str, title: str, jira_url: str) -> str:
     return f"""You are a senior software engineer reviewing your own work.
 Review all changes since the base branch.
 Fix any issues found.
+Make sure all changes are committed and the branch is pushed to the remote (`git push`).
 Then open a Pull Request on GitHub with:
 - Title: {jira_key} — {title}
 - Body: summary of changes, link to Jira ticket ({jira_url}), test results

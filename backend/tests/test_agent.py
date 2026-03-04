@@ -106,7 +106,10 @@ class TestPrompts:
         prompt = build_work_prompt()
         assert "PLAN.md" in prompt
         assert "Commit" in prompt
-        assert "Do not open a PR" in prompt
+        assert "corsair/" in prompt
+        assert "git push" in prompt
+        assert "Pull Request" in prompt
+        assert "PR_URL.txt" in prompt
 
     def test_review_prompt(self):
         prompt = build_review_prompt("SWE-123", "Fix bug", "https://jira.com/SWE-123")

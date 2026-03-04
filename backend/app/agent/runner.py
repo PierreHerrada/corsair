@@ -5,6 +5,7 @@ import json
 import logging
 import os
 import pwd
+import random
 import uuid
 from datetime import datetime, timezone
 from decimal import Decimal
@@ -322,6 +323,35 @@ def _text_to_adf(text: str) -> dict:
     }
 
 
+_FUNNY_WORDS = [
+    "Bazinga!", "Cowabunga!", "Wubba lubba dub dub!", "Shazam!", "Booyah!",
+    "Yoink!", "Kaboom!", "Zoinks!", "Kapow!", "Wahoo!",
+    "Bingo bongo!", "Holy guacamole!", "Schwifty!", "Crikey!", "Eureka!",
+]
+
+
+def _build_work_slack_message(task: Task, plan_text: str, pr_url: str) -> str:
+    """Build a dynamic Slack message for a successful work stage completion."""
+    funny = random.choice(_FUNNY_WORDS)
+    lines = [f"*{funny}* Implementation complete for *{task.title}*"]
+
+    if pr_url:
+        lines.append(f"\n:rocket: *Pull Request:* {pr_url}")
+
+    if task.jira_key:
+        jira_link = task.jira_url or task.jira_key
+        lines.append(f":ticket: *Ticket:* {jira_link}")
+
+    if plan_text:
+        # Truncate to a reasonable summary for Slack
+        summary = plan_text.strip()
+        if len(summary) > 500:
+            summary = summary[:500] + "..."
+        lines.append(f"\n:memo: *Summary:*\n{summary}")
+
+    return "\n".join(lines)
+
+
 async def _notify_run_complete(
     task: Task, stage: RunStage, success: bool, plan_text: str = "", pr_url: str = ""
 ) -> None:
@@ -329,7 +359,7 @@ async def _notify_run_complete(
     status_text = "completed successfully" if success else "failed"
     stage_label = stage.value.capitalize()
     message = f"{stage_label} stage {status_text}."
-    if pr_url and stage == RunStage.REVIEW and success:
+    if pr_url and stage in (RunStage.WORK, RunStage.REVIEW) and success:
         message = f"{stage_label} stage {status_text}.\nPR: {pr_url}"
 
     from app.integrations.registry import IntegrationRegistry
@@ -356,9 +386,12 @@ async def _notify_run_complete(
     try:
         slack = IntegrationRegistry.get("slack")
         if slack is not None and task.slack_channel and task.slack_thread_ts:
-            # For successful plan stage, post the plan content
-            use_plan = stage == RunStage.PLAN and success and plan_text
-            slack_message = plan_text if use_plan else message
+            if stage == RunStage.WORK and success:
+                slack_message = _build_work_slack_message(task, plan_text, pr_url)
+            elif stage == RunStage.PLAN and success and plan_text:
+                slack_message = plan_text
+            else:
+                slack_message = message
             await slack.post_thread_update(task.slack_channel, task.slack_thread_ts, slack_message)
     except Exception:
         logger.exception("Failed to post Slack update for task %s", task.id)
@@ -818,9 +851,9 @@ async def run_agent(
                 except Exception:
                     logger.exception("Failed to read INVESTIGATION.md for run %s", run.id)
 
-            # Read PR URL from workspace (written by agent during review stage)
+            # Read PR URL from workspace (written by agent during work or review stage)
             detected_pr_url = ""
-            if stage == RunStage.REVIEW and workspace_dir and os.path.isdir(workspace_dir):
+            if stage in (RunStage.WORK, RunStage.REVIEW) and workspace_dir and os.path.isdir(workspace_dir):
                 try:
                     from pathlib import Path as _PPath
 
