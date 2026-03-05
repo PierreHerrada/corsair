@@ -198,9 +198,7 @@ Some software needs a fleet. Corsair just needs a heading.
 ## Contributors
 
 <a href="https://github.com/PierreHerrada">
-  <img src="https://github.com/PierreHerrada.png" width="80" style="border-radius:50%" alt="Pierre Herrada">
-  <br>
-  <sub><b>@PierreHerrada</b></sub>
+  <img src="https://github.com/PierreHerrada.png" width="50" style="border-radius:50%" alt="Pierre Herrada">
 </a>
 
 ## License
