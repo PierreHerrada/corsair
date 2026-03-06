@@ -61,8 +61,8 @@ RUN chmod +x /app/entrypoint.sh
 # Remove default nginx config
 RUN rm -f /etc/nginx/sites-enabled/default
 
-# Create workspaces directory and give corsair user access
-RUN mkdir -p /home/corsair/workspaces && \
+# Create workspaces and logs directories and give corsair user access
+RUN mkdir -p /home/corsair/workspaces /app/logs && \
     chown -R corsair:corsair /app/backend /home/corsair
 
 EXPOSE 80 8000
