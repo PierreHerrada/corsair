@@ -6,6 +6,7 @@ from typing import Optional
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException
 from pydantic import BaseModel
+from tortoise.expressions import Q
 
 from app.agent.runner import run_agent, stop_run
 from app.models import AgentLog, AgentRun, RunStage, RunStatus, Task, TaskStatus
@@ -63,7 +64,14 @@ def _run_to_dict(run: AgentRun) -> dict:
 
 @router.get("")
 async def list_tasks() -> list[dict]:
-    tasks = await Task.active().order_by("-created_at")
+    today_start = datetime(
+        *datetime.now(timezone.utc).timetuple()[:3], tzinfo=timezone.utc
+    )
+    tasks = await (
+        Task.active()
+        .exclude(Q(status=TaskStatus.DONE) & Q(updated_at__lt=today_start))
+        .order_by("-created_at")
+    )
     return [await _task_to_dict(t) for t in tasks]
 
 
