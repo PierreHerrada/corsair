@@ -23,13 +23,21 @@ class TaskUpdate(BaseModel):
     auto_work: Optional[bool] = None
 
 
-async def _task_to_dict(task: Task) -> dict:
-    latest_run = await AgentRun.filter(task_id=task.id).order_by("-started_at").first()
-    return {
+async def _task_to_dict(task: Task, summary: bool = False) -> dict:
+    if summary:
+        latest_run = (
+            await AgentRun.filter(task_id=task.id)
+            .order_by("-started_at")
+            .only("id", "task_id", "stage", "status", "cost_usd", "started_at", "finished_at")
+            .first()
+        )
+    else:
+        latest_run = await AgentRun.filter(task_id=task.id).order_by("-started_at").first()
+    d: dict = {
         "id": str(task.id),
         "title": task.title,
-        "description": task.description,
-        "acceptance": task.acceptance,
+        "description": task.description[:200] if summary else task.description,
+        "acceptance": "" if summary else task.acceptance,
         "status": task.status.value,
         "jira_key": task.jira_key,
         "jira_url": task.jira_url,
@@ -37,16 +45,17 @@ async def _task_to_dict(task: Task) -> dict:
         "pr_url": task.pr_url,
         "pr_number": task.pr_number,
         "repo": task.repo,
-        "plan": task.plan,
-        "analysis": task.analysis,
+        "plan": "" if summary else task.plan,
+        "analysis": task.analysis[:100] if summary else task.analysis,
         "auto_work": task.auto_work,
         "created_at": task.created_at.isoformat(),
-        "latest_run": _run_to_dict(latest_run) if latest_run else None,
+        "latest_run": _run_to_dict(latest_run, summary=summary) if latest_run else None,
     }
+    return d
 
 
-def _run_to_dict(run: AgentRun) -> dict:
-    return {
+def _run_to_dict(run: AgentRun, summary: bool = False) -> dict:
+    d: dict = {
         "id": str(run.id),
         "task_id": str(run.task_id),
         "stage": run.stage.value,
@@ -56,9 +65,11 @@ def _run_to_dict(run: AgentRun) -> dict:
         "cost_usd": float(run.cost_usd),
         "started_at": run.started_at.isoformat(),
         "finished_at": run.finished_at.isoformat() if run.finished_at else None,
-        "workspace_path": run.workspace_path,
-        "file_tree": run.file_tree,
     }
+    if not summary:
+        d["workspace_path"] = run.workspace_path
+        d["file_tree"] = run.file_tree
+    return d
 
 
 @router.get("")
@@ -77,7 +88,7 @@ async def list_tasks() -> list[dict]:
         .limit(10)
     )
     tasks = sorted(non_done + done, key=lambda t: t.created_at, reverse=True)
-    return [await _task_to_dict(t) for t in tasks]
+    return [await _task_to_dict(t, summary=True) for t in tasks]
 
 
 @router.get("/{task_id}")
