@@ -60,13 +60,13 @@ def _run_to_dict(run: AgentRun, summary: bool = False) -> dict:
         "task_id": str(run.task_id),
         "stage": run.stage.value,
         "status": run.status.value,
-        "tokens_in": run.tokens_in,
-        "tokens_out": run.tokens_out,
         "cost_usd": float(run.cost_usd),
         "started_at": run.started_at.isoformat(),
         "finished_at": run.finished_at.isoformat() if run.finished_at else None,
     }
     if not summary:
+        d["tokens_in"] = run.tokens_in
+        d["tokens_out"] = run.tokens_out
         d["workspace_path"] = run.workspace_path
         d["file_tree"] = run.file_tree
     return d
