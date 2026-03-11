@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import uuid
 
 from fastapi import APIRouter, Query
@@ -13,6 +14,81 @@ router = APIRouter(prefix="/api/v1/settings", tags=["settings"])
 
 class SettingUpdate(BaseModel):
     value: str
+
+
+class EnvVarInput(BaseModel):
+    name: str
+    value: str
+
+
+class EnvVarsUpdate(BaseModel):
+    items: list[EnvVarInput]
+
+
+@router.get("/env-vars")
+async def get_env_vars() -> dict:
+    setting = await Setting.filter(key="env_vars").first()
+    if not setting or not setting.value:
+        return {"items": [], "updated_at": None}
+    try:
+        items = json.loads(setting.value)
+    except (json.JSONDecodeError, TypeError):
+        return {"items": [], "updated_at": setting.updated_at.isoformat() if setting.updated_at else None}
+    masked = [
+        {"name": item.get("name", ""), "masked_value": "*" * len(item.get("value", ""))}
+        for item in items
+        if item.get("name")
+    ]
+    return {
+        "items": masked,
+        "updated_at": setting.updated_at.isoformat() if setting.updated_at else None,
+    }
+
+
+@router.put("/env-vars")
+async def update_env_vars(body: EnvVarsUpdate) -> dict:
+    # Load existing values to preserve masked entries
+    existing: dict[str, str] = {}
+    setting = await Setting.filter(key="env_vars").first()
+    if setting and setting.value:
+        try:
+            for item in json.loads(setting.value):
+                if item.get("name") and item.get("value"):
+                    existing[item["name"]] = item["value"]
+        except (json.JSONDecodeError, TypeError):
+            pass
+
+    # Build new list, preserving old values for all-asterisk entries
+    new_items = []
+    for item in body.items:
+        name = item.name.strip()
+        if not name:
+            continue
+        value = item.value
+        # If value is all asterisks and name exists in old data, keep old value
+        if value and all(c == "*" for c in value) and name in existing:
+            value = existing[name]
+        new_items.append({"name": name, "value": value})
+
+    serialized = json.dumps(new_items)
+    if setting:
+        setting.value = serialized
+        await setting.save()
+    else:
+        setting = await Setting.create(
+            id=uuid.uuid4(),
+            key="env_vars",
+            value=serialized,
+        )
+
+    masked = [
+        {"name": item["name"], "masked_value": "*" * len(item["value"])}
+        for item in new_items
+    ]
+    return {
+        "items": masked,
+        "updated_at": setting.updated_at.isoformat() if setting.updated_at else None,
+    }
 
 
 @router.get("/{key}/history")

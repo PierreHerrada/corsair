@@ -1,11 +1,14 @@
 import { useCallback, useEffect, useState } from "react";
 import { fetchJiraStatusDefaults } from "../api/agent";
 import {
+  fetchEnvVars,
   fetchSetting,
   fetchSettingHistory,
+  updateEnvVars,
   updateSetting,
 } from "../api/settings";
 import type {
+  EnvVarItem,
   SettingHistoryEntry,
   SkillItem,
   SubagentItem,
@@ -255,6 +258,96 @@ export function useJiraSyncInterval() {
   }, []);
 
   return { value, setValue, loading, saving, error, lastSaved, save };
+}
+
+export function useEnvVars() {
+  const [items, setItems] = useState<EnvVarItem[]>([]);
+  const [pendingValues, setPendingValues] = useState<Record<number, string>>({});
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [lastSaved, setLastSaved] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    try {
+      setLoading(true);
+      const data = await fetchEnvVars();
+      setItems(data.items);
+      setPendingValues({});
+      setLastSaved(data.updated_at);
+      setError(null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Unknown error");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const addItem = useCallback(() => {
+    setItems((prev) => [...prev, { name: "", masked_value: "" }]);
+  }, []);
+
+  const updateName = useCallback((index: number, name: string) => {
+    setItems((prev) => {
+      const next = [...prev];
+      next[index] = { ...next[index], name };
+      return next;
+    });
+  }, []);
+
+  const updateValue = useCallback((index: number, value: string) => {
+    setPendingValues((prev) => ({ ...prev, [index]: value }));
+  }, []);
+
+  const removeItem = useCallback((index: number) => {
+    setItems((prev) => prev.filter((_, i) => i !== index));
+    setPendingValues((prev) => {
+      const next: Record<number, string> = {};
+      for (const [k, v] of Object.entries(prev)) {
+        const ki = Number(k);
+        if (ki < index) next[ki] = v;
+        else if (ki > index) next[ki - 1] = v;
+      }
+      return next;
+    });
+  }, []);
+
+  const save = useCallback(async () => {
+    try {
+      setSaving(true);
+      const payload = items.map((item, i) => ({
+        name: item.name,
+        value: pendingValues[i] !== undefined ? pendingValues[i] : item.masked_value,
+      }));
+      const data = await updateEnvVars(payload);
+      setItems(data.items);
+      setPendingValues({});
+      setLastSaved(data.updated_at);
+      setError(null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Unknown error");
+    } finally {
+      setSaving(false);
+    }
+  }, [items, pendingValues]);
+
+  return {
+    items,
+    pendingValues,
+    loading,
+    saving,
+    error,
+    lastSaved,
+    addItem,
+    updateName,
+    updateValue,
+    removeItem,
+    save,
+  };
 }
 
 export function useSkills() {

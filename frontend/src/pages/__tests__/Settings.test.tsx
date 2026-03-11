@@ -7,6 +7,8 @@ vi.mock("../../api/settings", () => ({
   fetchSetting: vi.fn(),
   updateSetting: vi.fn(),
   fetchSettingHistory: vi.fn(),
+  fetchEnvVars: vi.fn(),
+  updateEnvVars: vi.fn(),
 }));
 
 vi.mock("../../api/repositories", () => ({
@@ -16,6 +18,7 @@ vi.mock("../../api/repositories", () => ({
 }));
 
 import {
+  fetchEnvVars,
   fetchSetting,
   fetchSettingHistory,
   updateSetting,
@@ -43,9 +46,20 @@ function mockDefaults() {
     limit: 50,
     entries: [],
   });
+  vi.mocked(fetchEnvVars).mockResolvedValue({
+    items: [],
+    updated_at: null,
+  });
 }
 
 describe("Settings", () => {
+  beforeEach(() => {
+    vi.mocked(fetchEnvVars).mockResolvedValue({
+      items: [],
+      updated_at: null,
+    });
+  });
+
   it("shows loading state initially", () => {
     vi.mocked(fetchSetting).mockReturnValue(new Promise(() => {}));
     vi.mocked(fetchRepositories).mockResolvedValue([]);
@@ -303,9 +317,15 @@ describe("Settings", () => {
     await waitFor(() => {
       expect(screen.getByText("Skills")).toBeInTheDocument();
     });
-    // Click the Add button in the Skills section
+    // Click the Add button in the Skills section (after env vars + Add)
     const addButtons = screen.getAllByText("+ Add");
-    await userEvent.click(addButtons[0]);
+    // Find the one inside the Skills section
+    const skillsAdd = addButtons.find((btn) => {
+      const section = btn.closest(".bg-abyss");
+      return section?.textContent?.includes("Skills");
+    });
+    expect(skillsAdd).toBeDefined();
+    await userEvent.click(skillsAdd!);
     await waitFor(() => {
       expect(screen.getByPlaceholderText("Name (used as filename)")).toBeInTheDocument();
     });

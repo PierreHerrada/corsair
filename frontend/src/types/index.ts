@@ -182,6 +182,16 @@ export interface SubagentItem {
   content: string;
 }
 
+export interface EnvVarItem {
+  name: string;
+  masked_value: string;
+}
+
+export interface EnvVarsResponse {
+  items: EnvVarItem[];
+  updated_at: string | null;
+}
+
 export interface SettingHistoryEntry {
   id: string;
   setting_key: string;

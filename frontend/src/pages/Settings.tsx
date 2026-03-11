@@ -5,6 +5,7 @@ import { useRepositories } from "../hooks/useRepositories";
 import {
   useAutoWork,
   useBasePrompt,
+  useEnvVars,
   useLessons,
   useJiraSyncInterval,
   useMaxActiveAgents,
@@ -98,6 +99,7 @@ export default function Settings() {
   const lessons = useLessons();
   const maxAgents = useMaxActiveAgents();
   const autoWork = useAutoWork();
+  const envVars = useEnvVars();
   const jiraSyncInterval = useJiraSyncInterval();
 
   if (loading) {
@@ -347,6 +349,80 @@ export default function Settings() {
         {autoWork.error && (
           <div className="text-coral text-sm mt-2">{autoWork.error}</div>
         )}
+      </div>
+
+      {/* Environment Variables */}
+      <div className="bg-abyss border border-foam/8 rounded-lg p-4 mt-6">
+        <div className="flex items-center justify-between mb-2">
+          <label className="block text-white text-sm font-medium">
+            Environment Variables
+          </label>
+          <button
+            onClick={envVars.addItem}
+            className="px-3 py-1 bg-foam/10 border border-foam/20 rounded text-foam text-xs hover:bg-foam/20 cursor-pointer"
+          >
+            + Add
+          </button>
+        </div>
+        <p className="text-mist text-xs mb-3">
+          Environment variables injected into every agent run.
+        </p>
+
+        {envVars.error && (
+          <div className="text-coral text-sm mb-3">{envVars.error}</div>
+        )}
+
+        {envVars.items.length === 0 ? (
+          <div className="text-mist text-sm py-2">
+            No environment variables configured.
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {envVars.items.map((item, i) => (
+              <div key={i} className="flex items-center gap-2">
+                <input
+                  type="text"
+                  value={item.name}
+                  onChange={(e) => envVars.updateName(i, e.target.value)}
+                  placeholder="NAME"
+                  className="w-48 bg-deep border border-foam/20 rounded px-3 py-1.5 text-white text-sm font-mono focus:outline-none focus:border-foam/50"
+                />
+                <input
+                  type="password"
+                  value={
+                    envVars.pendingValues[i] !== undefined
+                      ? envVars.pendingValues[i]
+                      : item.masked_value
+                  }
+                  onChange={(e) => envVars.updateValue(i, e.target.value)}
+                  placeholder="value"
+                  className="flex-1 bg-deep border border-foam/20 rounded px-3 py-1.5 text-white text-sm font-mono focus:outline-none focus:border-foam/50"
+                />
+                <button
+                  onClick={() => envVars.removeItem(i)}
+                  className="text-coral text-xs hover:text-coral/80 cursor-pointer px-2"
+                >
+                  Remove
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <div className="flex items-center justify-between mt-3">
+          <div className="text-mist text-xs">
+            {envVars.lastSaved
+              ? `Last saved: ${new Date(envVars.lastSaved).toLocaleString()}`
+              : "Not saved yet"}
+          </div>
+          <button
+            onClick={envVars.save}
+            disabled={envVars.saving}
+            className="px-4 py-2 bg-foam/10 border border-foam/20 rounded-lg text-foam text-sm hover:bg-foam/20 disabled:opacity-50 cursor-pointer"
+          >
+            {envVars.saving ? "Saving..." : "Save"}
+          </button>
+        </div>
       </div>
 
       {/* Jira Sync Interval */}

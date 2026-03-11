@@ -704,7 +704,44 @@ Create or update a setting. When `key` is `"lessons"`, a `setting_history` entry
 }
 ```
 
-**Known setting keys:** `base_prompt`, `skills`, `subagents`, `lessons`, `max_active_agents`, `auto_work`, `jira_sync_interval`, `jira_status_mapping`
+**Known setting keys:** `base_prompt`, `skills`, `subagents`, `lessons`, `max_active_agents`, `auto_work`, `jira_sync_interval`, `jira_status_mapping`, `env_vars`
+
+#### `GET /api/v1/settings/env-vars`
+
+Returns environment variables with masked values.
+
+**Response:** `200 OK`
+```json
+{
+  "items": [
+    {"name": "MY_KEY", "masked_value": "****"}
+  ],
+  "updated_at": "ISO 8601|null"
+}
+```
+
+#### `PUT /api/v1/settings/env-vars`
+
+Create or update environment variables. If a value is all `*` characters and an entry with the same name already exists, the old value is preserved. This allows the frontend to send back masked values for unchanged entries.
+
+**Request Body:**
+```json
+{
+  "items": [
+    {"name": "MY_KEY", "value": "actual_value_or_asterisks"}
+  ]
+}
+```
+
+**Response:** `200 OK`
+```json
+{
+  "items": [
+    {"name": "MY_KEY", "masked_value": "****"}
+  ],
+  "updated_at": "ISO 8601"
+}
+```
 
 #### `GET /api/v1/settings/{key}/history`
 

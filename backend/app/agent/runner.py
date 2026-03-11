@@ -718,6 +718,18 @@ async def run_agent(
             sub_env["DD_APP_KEY"] = settings.dd_app_key
             sub_env["DD_SITE"] = settings.dd_site
 
+        # Inject user-configured environment variables
+        from app.models.setting import Setting as _EnvSetting
+
+        env_vars_setting = await _EnvSetting.filter(key="env_vars").first()
+        if env_vars_setting and env_vars_setting.value:
+            try:
+                for item in json.loads(env_vars_setting.value):
+                    if item.get("name") and item.get("value"):
+                        sub_env[item["name"]] = item["value"]
+            except (json.JSONDecodeError, TypeError):
+                logger.warning("Failed to parse env_vars setting for run %s", run.id)
+
         process = await asyncio.create_subprocess_exec(
             *cmd,
             cwd=cwd,

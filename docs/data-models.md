@@ -259,7 +259,7 @@ Stores application-level configuration as key-value pairs.
 | Field | Type | Constraints | Description |
 |---|---|---|---|
 | `id` | UUID | PK, auto-generated | Unique setting identifier |
-| `key` | TEXT | NOT NULL, UNIQUE | Setting key (e.g., `base_prompt`, `max_active_agents`) |
+| `key` | TEXT | NOT NULL, UNIQUE | Setting key (e.g., `base_prompt`, `max_active_agents`, `env_vars`) |
 | `value` | TEXT | NOT NULL, default '' | Setting value |
 | `updated_at` | TIMESTAMPTZ | NOT NULL, auto-update | Last modification time |
 
