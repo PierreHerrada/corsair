@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
-import type { AgentLog, LogType } from "../types";
+import type { AgentLog, LogType, RunStatus } from "../types";
+import ContainerStatus from "./ContainerStatus";
 
 const LOG_COLORS: Record<LogType, string> = {
   text: "text-white",
@@ -18,9 +19,20 @@ const LOG_PREFIXES: Record<LogType, string> = {
 interface AgentLogViewerProps {
   logs: AgentLog[];
   connected: boolean;
+  runStatus?: RunStatus;
+  ecsTaskArn?: string | null;
+  errorMessage?: string | null;
+  onCancel?: () => void;
 }
 
-export default function AgentLogViewer({ logs, connected }: AgentLogViewerProps) {
+export default function AgentLogViewer({
+  logs,
+  connected,
+  runStatus,
+  ecsTaskArn,
+  errorMessage,
+  onCancel,
+}: AgentLogViewerProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -41,6 +53,16 @@ export default function AgentLogViewer({ logs, connected }: AgentLogViewerProps)
           {connected ? "Live" : "Stored"}
         </span>
       </div>
+      {runStatus && ecsTaskArn && (
+        <div className="px-4 pt-2">
+          <ContainerStatus
+            status={runStatus}
+            ecsTaskArn={ecsTaskArn}
+            errorMessage={errorMessage || null}
+            onCancel={onCancel}
+          />
+        </div>
+      )}
       <div className="p-4 max-h-[70vh] overflow-y-auto font-mono text-xs leading-relaxed">
         {logs.length === 0 ? (
           <span className="text-mist/50">No logs yet...</span>

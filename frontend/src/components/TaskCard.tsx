@@ -73,6 +73,11 @@ export default function TaskCard({ task, onRefresh }: TaskCardProps) {
       {task.latest_run && (
         <div className="mt-2 text-xs text-mist">
           Last run: {task.latest_run.stage} — ${task.latest_run.cost_usd.toFixed(4)}
+          {task.latest_run.ecs_task_arn && (
+            <span className="ml-1 text-mist/40">
+              (ECS)
+            </span>
+          )}
         </div>
       )}
     </div>

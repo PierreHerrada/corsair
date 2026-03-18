@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { retryTask, stopTask, triggerStage } from "../api/tasks";
 import type { Task } from "../types";
+import AgentTypeSelector from "./AgentTypeSelector";
 
 interface StageControlsProps {
   task: Task;
@@ -9,6 +10,7 @@ interface StageControlsProps {
 
 export default function StageControls({ task, onRefresh }: StageControlsProps) {
   const [loading, setLoading] = useState<string | null>(null);
+  const [agentTypeId, setAgentTypeId] = useState<string | null>(null);
 
   const handleTrigger = async (stage: "plan" | "work" | "review") => {
     setLoading(stage);
@@ -46,10 +48,13 @@ export default function StageControls({ task, onRefresh }: StageControlsProps) {
     }
   };
 
-  const isRunning = task.latest_run?.status === "running";
+  const isRunning = task.latest_run?.status === "running" || task.latest_run?.status === "launching";
 
   return (
-    <div className="flex gap-2">
+    <div className="flex gap-2 items-center">
+      {!isRunning && task.status !== "done" && task.status !== "failed" && (
+        <AgentTypeSelector value={agentTypeId} onChange={setAgentTypeId} />
+      )}
       {isRunning && (
         <button
           onClick={handleStop}

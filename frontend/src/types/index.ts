@@ -6,7 +6,7 @@ export type TaskStatus =
   | "done"
   | "failed";
 export type RunStage = "plan" | "work" | "review" | "investigate";
-export type RunStatus = "running" | "done" | "failed";
+export type RunStatus = "launching" | "running" | "done" | "failed" | "cancelled";
 export type LogType = "text" | "tool_use" | "tool_result" | "error";
 
 export interface Task {
@@ -23,6 +23,7 @@ export interface Task {
   repo: string | null;
   auto_work: boolean | null;
   analysis: string;
+  agent_type_id: string | null;
   created_at: string;
   latest_run: AgentRun | null;
 }
@@ -45,6 +46,8 @@ export interface AgentRun {
   finished_at: string | null;
   workspace_path: string | null;
   file_tree: FileTreeEntry[] | null;
+  ecs_task_arn: string | null;
+  error_message: string | null;
 }
 
 export interface AgentLog {
@@ -53,6 +56,27 @@ export interface AgentLog {
   type: LogType;
   content: Record<string, unknown>;
   created_at: string;
+}
+
+export interface AgentType {
+  id: string;
+  name: string;
+  display_name: string;
+  description: string | null;
+  docker_image: string;
+  ecs_task_definition: string;
+  task_role_arn: string;
+  secrets_config: Record<string, string>;
+  capabilities: string[];
+  cpu: number;
+  memory: number;
+  max_duration_seconds: number;
+  security_group_ids: string[];
+  subnet_ids: string[];
+  enable_dind: boolean;
+  is_default: boolean;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface DashboardStats {

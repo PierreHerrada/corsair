@@ -8,6 +8,7 @@ import Dashboard from "./pages/Dashboard";
 import Datadog from "./pages/Datadog";
 import Login from "./pages/Login";
 import Logs from "./pages/Logs";
+import AgentTypes from "./pages/AgentTypes";
 import Settings from "./pages/Settings";
 import Status from "./pages/Status";
 import TaskDetail from "./pages/TaskDetail";
@@ -123,6 +124,14 @@ function AppContent() {
           element={
             <ProtectedRoute>
               <Settings />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/settings/agent-types"
+          element={
+            <ProtectedRoute>
+              <AgentTypes />
             </ProtectedRoute>
           }
         />
