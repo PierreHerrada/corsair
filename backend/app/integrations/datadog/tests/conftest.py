@@ -7,6 +7,7 @@ MODELS = [
     "app.models.task",
     "app.models.agent_run",
     "app.models.agent_log",
+    "app.models.agent_type",
     "app.models.conversation",
     "app.models.chat_message",
     "app.models.datadog_analysis",

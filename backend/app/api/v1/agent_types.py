@@ -113,7 +113,7 @@ async def update_agent_type(agent_type_id: str, body: AgentTypeUpdate) -> dict:
 
 
 @router.delete("/{agent_type_id}", status_code=204)
-async def delete_agent_type(agent_type_id: str) -> None:
+async def delete_agent_type(agent_type_id: str):
     at = await AgentType.filter(id=agent_type_id).first()
     if not at:
         raise HTTPException(status_code=404, detail="Agent type not found")
