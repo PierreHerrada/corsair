@@ -9,6 +9,7 @@ from pydantic import BaseModel
 
 from app.agent.runner import run_agent, stop_run
 from app.models import AgentLog, AgentRun, RunStage, RunStatus, Task, TaskStatus
+from app.models.agent_type import AgentType
 from app.models.setting import Setting
 from app.websocket.manager import ws_manager
 
@@ -63,6 +64,8 @@ def _run_to_dict(run: AgentRun, summary: bool = False) -> dict:
         "cost_usd": float(run.cost_usd),
         "started_at": run.started_at.isoformat(),
         "finished_at": run.finished_at.isoformat() if run.finished_at else None,
+        "ecs_task_arn": run.ecs_task_arn,
+        "error_message": run.error_message,
     }
     if not summary:
         d["tokens_in"] = run.tokens_in
@@ -132,12 +135,14 @@ async def update_task(task_id: str, body: TaskUpdate) -> dict:
 
 
 async def _trigger_stage(task_id: str, stage: RunStage, background_tasks: BackgroundTasks) -> dict:
-    task = await Task.filter(id=task_id).first()
+    task = await Task.filter(id=task_id).prefetch_related("agent_type").first()
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
 
     # Check for active runs
-    active_run = await AgentRun.filter(task_id=task_id, status=RunStatus.RUNNING).first()
+    active_run = await AgentRun.filter(
+        task_id=task_id, status__in=[RunStatus.RUNNING, RunStatus.LAUNCHING]
+    ).first()
     if active_run:
         raise HTTPException(status_code=409, detail="A run is already active for this task")
 
@@ -148,23 +153,56 @@ async def _trigger_stage(task_id: str, stage: RunStage, background_tasks: Backgr
     except (ValueError, TypeError):
         max_active = 0
     if max_active > 0:
-        running_count = await AgentRun.filter(status=RunStatus.RUNNING).count()
+        running_count = await AgentRun.filter(
+            status__in=[RunStatus.RUNNING, RunStatus.LAUNCHING]
+        ).count()
         if running_count >= max_active:
             raise HTTPException(
                 status_code=429,
                 detail=f"Max active agents limit reached ({max_active})",
             )
 
-    run = await AgentRun.create(
-        task=task,
-        stage=stage,
-        status=RunStatus.RUNNING,
-    )
+    # Determine if we should use ECS orchestration
+    from app.config import settings
+    use_orchestrator = settings.ecs_cluster_arn or settings.use_local_agent
 
-    # Start agent in background
-    background_tasks.add_task(_run_agent_background, task, stage, run)
+    if use_orchestrator:
+        # ECS / local Docker orchestrator path
+        agent_type = getattr(task, "agent_type", None)
+        if agent_type is None:
+            agent_type = await AgentType.filter(is_default=True).first()
+        if not agent_type:
+            raise HTTPException(status_code=500, detail="No default agent type configured")
 
-    return _run_to_dict(run)
+        run = await AgentRun.create(
+            task=task, stage=stage, status=RunStatus.LAUNCHING,
+        )
+
+        from fastapi import Request
+        # Get orchestrator from app state (set in main.py startup)
+        from app.main import app
+        orchestrator = getattr(app.state, "orchestrator", None)
+        if not orchestrator:
+            raise HTTPException(status_code=500, detail="Orchestrator not initialized")
+
+        try:
+            task_arn = await orchestrator.launch(task, run, stage.value, agent_type)
+            run.ecs_task_arn = task_arn
+            await run.save()
+        except Exception as e:
+            run.status = RunStatus.FAILED
+            run.error_message = str(e)
+            await run.save()
+            raise HTTPException(status_code=500, detail=f"Failed to launch agent: {e}")
+
+        return _run_to_dict(run)
+    else:
+        # Legacy subprocess path
+        run = await AgentRun.create(
+            task=task, stage=stage, status=RunStatus.RUNNING,
+        )
+        background_tasks.add_task(_run_agent_background, task, stage, run)
+        return _run_to_dict(run)
 
 
 async def _run_agent_background(task: Task, stage: RunStage, existing_run: AgentRun) -> None:
@@ -231,6 +269,26 @@ async def stop_task(task_id: str) -> dict:
         active_run = await AgentRun.get(id=active_run.id)
 
     return _run_to_dict(active_run)
+
+
+@router.post("/{task_id}/cancel", status_code=200)
+async def cancel_run(task_id: str) -> dict:
+    """Cancel an active agent run via the orchestrator."""
+    run = await AgentRun.filter(
+        task_id=task_id, status__in=[RunStatus.LAUNCHING, RunStatus.RUNNING]
+    ).order_by("-started_at").first()
+    if not run or not run.ecs_task_arn:
+        raise HTTPException(status_code=404, detail="No active orchestrated run found")
+
+    from app.main import app
+    orchestrator = getattr(app.state, "orchestrator", None)
+    if orchestrator:
+        await orchestrator.stop(run.ecs_task_arn)
+
+    run.status = RunStatus.CANCELLED
+    run.finished_at = datetime.now(timezone.utc)
+    await run.save()
+    return _run_to_dict(run)
 
 
 @router.get("/{task_id}/runs")

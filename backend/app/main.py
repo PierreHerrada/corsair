@@ -7,10 +7,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from tortoise.contrib.fastapi import register_tortoise
 
 from app.api.v1 import (
+    agent_types_router,
     chat_router,
     dashboard_router,
     datadog_router,
     integrations_router,
+    internal_router,
     jira_router,
     logs_router,
     repositories_router,
@@ -101,6 +103,25 @@ def create_app() -> FastAPI:
         app.state.workspace_cleanup_task = asyncio.create_task(_workspace_cleanup_loop())
         logger.info("Workspace cleanup task started (hourly, 24h retention)")
 
+        # Create agent orchestrator
+        if settings.use_local_agent:
+            from app.agent.local_runner import LocalAgentRunner
+            app.state.orchestrator = LocalAgentRunner()
+            logger.info("Local agent runner initialized")
+        elif settings.ecs_cluster_arn:
+            from app.agent.orchestrator import AgentOrchestrator
+            app.state.orchestrator = AgentOrchestrator()
+            logger.info("ECS agent orchestrator initialized")
+
+        # Start background task monitor
+        if hasattr(app.state, "orchestrator"):
+            from app.agent.task_monitor import AgentTaskMonitor
+            monitor = AgentTaskMonitor(
+                app.state.orchestrator, settings.agent_monitor_interval_seconds
+            )
+            app.state.monitor = monitor
+            asyncio.create_task(monitor.start())
+
     @app.on_event("shutdown")
     async def shutdown() -> None:
         logger.info("Corsair shutting down — marking active agent runs as failed")
@@ -114,6 +135,11 @@ def create_app() -> FastAPI:
         cleanup_task = getattr(app.state, "workspace_cleanup_task", None)
         if cleanup_task:
             cleanup_task.cancel()
+
+        # Stop task monitor
+        monitor = getattr(app.state, "monitor", None)
+        if monitor:
+            await monitor.stop()
 
         now = datetime.now(timezone.utc)
         running_runs = await AgentRun.filter(status=RunStatus.RUNNING).select_related("task")
@@ -134,6 +160,7 @@ def create_app() -> FastAPI:
     # Public routers (no auth)
     app.include_router(auth_router)
     app.include_router(webhooks_router)
+    app.include_router(internal_router)  # agent callbacks, protected by X-Internal-Secret
 
     # Protected routers (require auth)
     auth_dep = [Depends(get_current_user)]
@@ -146,6 +173,7 @@ def create_app() -> FastAPI:
     app.include_router(logs_router, dependencies=auth_dep)
     app.include_router(settings_router, dependencies=auth_dep)
     app.include_router(repositories_router, dependencies=auth_dep)
+    app.include_router(agent_types_router, dependencies=auth_dep)
 
     # WebSocket router — auth handled inside the handler
     app.include_router(agent_router)

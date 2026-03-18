@@ -17,11 +17,16 @@ from .settings import router as settings_router
 from .tasks import router as tasks_router
 from .webhooks import router as webhooks_router
 
+from .agent_types import router as agent_types_router
+from .internal import router as internal_router
+
 __all__ = [
+    "agent_types_router",
     "chat_router",
     "dashboard_router",
     "datadog_router",
     "integrations_router",
+    "internal_router",
     "jira_router",
     "logs_router",
     "repositories_router",
