@@ -121,6 +121,19 @@ class SlackIntegration(BaseIntegration):
             import re
 
             clean_text = re.sub(r"<@[A-Z0-9]+>\s*", "", text).strip()
+
+            # Parse optional [agent-type-name] tag
+            agent_type_id = None
+            agent_type_match = re.search(r"\[([a-z0-9-]+)\]", clean_text)
+            if agent_type_match:
+                from app.models.agent_type import AgentType
+                agent_type_name = agent_type_match.group(1)
+                matched_type = await AgentType.filter(name=agent_type_name).first()
+                if matched_type:
+                    agent_type_id = matched_type.id
+                    logger.info("Slack bot: matched agent type '%s' (%s)", agent_type_name, agent_type_id)
+                clean_text = re.sub(r"\s*\[[a-z0-9-]+\]\s*", " ", clean_text).strip()
+
             if not clean_text:
                 logger.warning(
                     "Slack bot: empty mention from user=%s, skipping task creation",
@@ -140,6 +153,7 @@ class SlackIntegration(BaseIntegration):
                 slack_channel=channel_id,
                 slack_thread_ts=slack_ts,
                 slack_user_id=user_id,
+                agent_type_id=agent_type_id,
             )
 
             # Persist the @mention as a chat message
