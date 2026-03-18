@@ -38,6 +38,20 @@ class Settings(BaseSettings):
     jwt_secret: str = "change-this-jwt-secret-in-production"
     environment: str = "development"
 
+    # ECS Agent Orchestration
+    ecs_cluster_arn: str = ""
+    internal_api_secret: str = ""
+    internal_callback_url: str = "http://control-plane.corsair.local:8000"
+    default_agent_task_definition: str = ""
+    aws_region: str = "eu-west-1"
+
+    # Agent monitor background task
+    agent_monitor_interval_seconds: int = 30
+
+    # Local development
+    use_local_agent: bool = False
+    local_agent_image: str = "corsair-agent:local"
+
     model_config = {"env_file": ".env", "extra": "ignore"}
 
 
