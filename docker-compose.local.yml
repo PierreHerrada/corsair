@@ -1,10 +1,39 @@
 services:
-  corsair:
-    build: .
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_DB: corsair
+      POSTGRES_USER: corsair
+      POSTGRES_PASSWORD: corsair
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U corsair"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  control-plane:
+    build:
+      context: .
+      dockerfile: Dockerfile
     ports:
       - "${PORT_FRONTEND:-80}:80"
       - "${PORT_BACKEND:-8000}:8000"
-    env_file:
-      - .env
+    env_file: .env
+    environment:
+      DATABASE_URL: postgres://corsair:corsair@postgres:5432/corsair
+      USE_LOCAL_AGENT: "true"
+      LOCAL_AGENT_IMAGE: corsair-agent:local
+      INTERNAL_API_SECRET: local-dev-secret
+    depends_on:
+      postgres:
+        condition: service_healthy
     volumes:
       - ./logs:/app/logs
+      - /var/run/docker.sock:/var/run/docker.sock
+
+volumes:
+  pgdata:

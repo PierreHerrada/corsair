@@ -20,25 +20,16 @@ WORKDIR /app
 COPY backend/requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 
-# --- Stage 3: Final Image ---
+# --- Stage 3: Final Image (Control Plane) ---
+# Node.js, Claude Code CLI, JDK, and git are no longer needed here —
+# they live in the agent container (agent/Dockerfile).
 FROM python:3.12-slim
 
-# Install nginx, supervisord, Node.js (for Claude Code CLI), and JDK (for Gradle/Kotlin projects)
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends nginx supervisor curl git default-jdk-headless && \
-    curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && \
-    apt-get install -y --no-install-recommends nodejs && \
-    npm install -g @anthropic-ai/claude-code && \
+    apt-get install -y --no-install-recommends nginx supervisor curl && \
     rm -rf /var/lib/apt/lists/*
 
-ENV JAVA_HOME=/usr/lib/jvm/default-java
-ENV PATH="${JAVA_HOME}/bin:${PATH}"
-
 WORKDIR /app
-
-# Create non-root user for running Claude CLI
-# (--dangerously-skip-permissions rejects root execution)
-RUN useradd -m -s /bin/bash corsair
 
 # Copy Python dependencies
 COPY --from=python-deps /usr/local/lib/python3.12/site-packages /usr/local/lib/python3.12/site-packages
@@ -61,9 +52,8 @@ RUN chmod +x /app/entrypoint.sh
 # Remove default nginx config
 RUN rm -f /etc/nginx/sites-enabled/default
 
-# Create workspaces and logs directories and give corsair user access
-RUN mkdir -p /home/corsair/workspaces /app/logs && \
-    chown -R corsair:corsair /app/backend /home/corsair
+# Create logs directory
+RUN mkdir -p /app/logs
 
 EXPOSE 80 8000
 
