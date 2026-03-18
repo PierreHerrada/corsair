@@ -54,6 +54,22 @@ class ConnectionManager:
         for ws in dead_connections:
             self.disconnect(run_id, ws)
 
+    async def broadcast_dict(self, run_id: str, data: dict) -> None:
+        """Broadcast a dict payload to all connected clients for a run."""
+        if run_id not in self._connections:
+            return
+
+        message = json.dumps(data)
+        dead_connections = []
+        for websocket in self._connections[run_id]:
+            try:
+                await websocket.send_text(message)
+            except Exception:
+                dead_connections.append(websocket)
+
+        for ws in dead_connections:
+            self.disconnect(run_id, ws)
+
     def get_connections(self, run_id: str) -> list[WebSocket]:
         return self._connections.get(run_id, [])
 
