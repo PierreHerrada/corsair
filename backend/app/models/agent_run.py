@@ -12,16 +12,18 @@ class RunStage(str, Enum):
 
 
 class RunStatus(str, Enum):
+    LAUNCHING = "launching"
     RUNNING = "running"
     DONE = "done"
     FAILED = "failed"
+    CANCELLED = "cancelled"
 
 
 class AgentRun(Model):
     id = fields.UUIDField(pk=True)
     task = fields.ForeignKeyField("models.Task", related_name="runs", on_delete=fields.CASCADE)
     stage = fields.CharEnumField(RunStage, max_length=15)
-    status = fields.CharEnumField(RunStatus, default=RunStatus.RUNNING, max_length=10)
+    status = fields.CharEnumField(RunStatus, default=RunStatus.RUNNING, max_length=15)
     tokens_in = fields.IntField(default=0)
     tokens_out = fields.IntField(default=0)
     cost_usd = fields.DecimalField(max_digits=10, decimal_places=6, default=0)
@@ -29,6 +31,8 @@ class AgentRun(Model):
     finished_at = fields.DatetimeField(null=True)
     workspace_path = fields.TextField(null=True)
     file_tree = fields.JSONField(null=True)
+    ecs_task_arn = fields.CharField(max_length=500, null=True)
+    error_message = fields.TextField(null=True)
 
     logs: fields.ReverseRelation["AgentLog"]  # noqa: F821
 

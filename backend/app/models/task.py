@@ -33,6 +33,9 @@ class Task(Model):
     plan = fields.TextField(default="")
     analysis = fields.TextField(default="")
     auto_work = fields.BooleanField(null=True, default=None)
+    agent_type = fields.ForeignKeyField(
+        "models.AgentType", related_name="tasks", null=True, on_delete=fields.SET_NULL
+    )
     created_at = fields.DatetimeField(auto_now_add=True)
     updated_at = fields.DatetimeField(auto_now=True)
     deleted_at = fields.DatetimeField(null=True, default=None)
