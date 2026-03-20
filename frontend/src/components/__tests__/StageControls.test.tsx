@@ -25,6 +25,7 @@ function makeTask(overrides: Partial<Task> = {}): Task {
     repo: null,
     auto_work: null,
     analysis: "",
+    agent_type_id: null,
     created_at: "2025-01-01T00:00:00Z",
     latest_run: null,
     ...overrides,
@@ -81,6 +82,8 @@ describe("StageControls", () => {
       finished_at: null,
       workspace_path: null,
       file_tree: null,
+      ecs_task_arn: null,
+      error_message: null,
     });
 
     render(
@@ -112,6 +115,8 @@ describe("StageControls", () => {
             finished_at: null,
             workspace_path: null,
             file_tree: null,
+            ecs_task_arn: null,
+            error_message: null,
           },
         })}
         onRefresh={vi.fn()}
@@ -141,6 +146,8 @@ describe("StageControls", () => {
       finished_at: null,
       workspace_path: null,
       file_tree: null,
+      ecs_task_arn: null,
+      error_message: null,
     });
 
     render(
@@ -159,6 +166,8 @@ describe("StageControls", () => {
             finished_at: null,
             workspace_path: null,
             file_tree: null,
+            ecs_task_arn: null,
+            error_message: null,
           },
         })}
         onRefresh={onRefresh}
@@ -190,6 +199,8 @@ describe("StageControls", () => {
             finished_at: null,
             workspace_path: null,
             file_tree: null,
+            ecs_task_arn: null,
+            error_message: null,
           },
         })}
         onRefresh={vi.fn()}

@@ -26,6 +26,7 @@ function makeRunningTask(overrides: Partial<Task> = {}): Task {
     repo: null,
     auto_work: null,
     analysis: "",
+    agent_type_id: null,
     created_at: "2025-01-01T00:00:00Z",
     latest_run: {
       id: "r1",
@@ -39,6 +40,8 @@ function makeRunningTask(overrides: Partial<Task> = {}): Task {
       finished_at: null,
       workspace_path: null,
       file_tree: null,
+      ecs_task_arn: null,
+      error_message: null,
     },
     ...overrides,
   };
@@ -91,6 +94,8 @@ describe("ActiveAgentRow", () => {
       finished_at: "2025-01-01T00:02:00Z",
       workspace_path: null,
       file_tree: null,
+      ecs_task_arn: null,
+      error_message: null,
     });
     const onStopped = vi.fn();
     renderRow(makeRunningTask(), onStopped);

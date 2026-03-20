@@ -24,6 +24,7 @@ function makeTask(overrides: Partial<Task> = {}): Task {
     repo: null,
     auto_work: null,
     analysis: "",
+    agent_type_id: null,
     created_at: "2025-01-01T00:00:00Z",
     latest_run: null,
     ...overrides,
