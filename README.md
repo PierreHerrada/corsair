@@ -34,6 +34,8 @@
 - **Slack-first workflow** — Tag `@Corsair` in any channel to create a task
 - **Jira integration** — Automatically creates and tracks Jira tickets
 - **Three-stage agent pipeline** — Plan → Work → Review, each manually triggered
+- **ECS container orchestration** — Run agents in isolated ECS Fargate tasks or local Docker containers
+- **Agent types** — Configure multiple agent profiles with different capabilities, resources, and timeouts
 - **Live log streaming** — Watch Claude Code work in real-time via WebSocket
 - **Cost tracking** — Per-task and per-stage token usage and cost breakdown
 - **GitHub PR automation** — Automatically opens PRs with Jira links
@@ -137,6 +139,9 @@ The UI will be available at `http://localhost` and the API at `http://localhost:
 | `GITHUB_ORG` | GitHub organization name | For GitHub |
 | `ADMIN_PASSWORD` | Admin password for the web UI | Yes |
 | `ENVIRONMENT` | `development` or `production` | Yes |
+| `AWS_REGION` | AWS region for ECS orchestration | For ECS |
+| `ECS_CLUSTER_ARN` | ECS cluster ARN | For ECS |
+| `INTERNAL_API_SECRET` | Secret for agent-to-control-plane callbacks | For ECS |
 
 ## Connecting Integrations
 
